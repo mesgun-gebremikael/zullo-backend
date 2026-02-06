@@ -30,7 +30,7 @@ namespace Zullo.Api
 
 
 
-            // ? Database (PostgreSQL)
+            // Database (PostgreSQL) lagra profiler 
             builder.Services.AddDbContext<AppDbContext>(options =>
              options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
