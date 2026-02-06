@@ -53,7 +53,7 @@ namespace Zullo.Api
 
             app.UseHttpsRedirection();
 
-            // You can keep this even if we don't use it yet
+            // You can keep this even if we don't use it yet ska raderas sedan
             app.UseAuthorization();
 
             app.MapControllers();
