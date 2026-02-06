@@ -30,7 +30,7 @@ namespace Zullo.Api
 
 
 
-            // Database (PostgreSQL) lagra profiler 
+            // Database (PostgreSQL),  lagra profiler   och likes i databasen,  ska raderas sedan om vi inte behöver det
             builder.Services.AddDbContext<AppDbContext>(options =>
              options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
