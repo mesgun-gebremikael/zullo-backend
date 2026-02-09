@@ -12,6 +12,19 @@ namespace Zullo.Api
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowFlutterWeb",
+                    policy =>
+                    {
+                        policy
+                            .AllowAnyOrigin()
+                            .AllowAnyHeader()
+                            .AllowAnyMethod();
+                    });
+            });
+
+
             NpgsqlConnection.GlobalTypeMapper.EnableDynamicJson();
 
 
@@ -39,6 +52,9 @@ namespace Zullo.Api
 
 
             var app = builder.Build();
+
+            app.UseCors("AllowFlutterWeb");
+
 
             app.UseDeveloperExceptionPage();  //tillfärlig kod ska tas bort
 
