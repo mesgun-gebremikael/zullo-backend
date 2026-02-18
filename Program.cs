@@ -50,13 +50,19 @@ namespace Zullo.Api
 
             builder.Services.AddScoped<Zullo.Api.Services.LikeLimitService>();
 
+            builder.Configuration.GetConnectionString("Default");
+
+
+
+
+
+           // app.UseDeveloperExceptionPage();  //tillfärlig kod ska tas bort
 
             var app = builder.Build();
 
+
             app.UseCors("AllowFlutterWeb");
 
-
-            app.UseDeveloperExceptionPage();  //tillfärlig kod ska tas bort
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
@@ -67,14 +73,15 @@ namespace Zullo.Api
                 app.UseSwaggerUI();
             }
 
-            app.UseHttpsRedirection();
+           // app.UseHttpsRedirection();
 
             // You can keep this even if we don't use it yet ska raderas sedan om vi inte behöver det 
             app.UseAuthorization();
 
             app.MapControllers();
 
-            app.Run();
+            app.Run(); 
         }
     }
 }
+
