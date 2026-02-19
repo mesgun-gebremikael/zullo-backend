@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Zullo.Api.Data;
+using Zullo.Api.Models;
 
 namespace Zullo.Api.Controllers;
 
@@ -10,7 +11,6 @@ public class MatchesController : ControllerBase
 {
     private readonly AppDbContext _db;
 
-    // TEMP user id tills riktig auth
     private static readonly Guid TempUserId =
         Guid.Parse("11111111-1111-1111-1111-111111111111");
 
@@ -19,54 +19,56 @@ public class MatchesController : ControllerBase
         _db = db;
     }
 
-    // GET /matches
-    [HttpGet]
+    // ✅ GET /matches
+    [HttpGet] // ⭐ DEN HÄR MÅSTE FINNAS
     public async Task<IActionResult> GetMyMatches()
     {
-        var myId = TempUserId;
-
-        var matches = await _db.Matches.AsNoTracking()
-            .Where(m => m.UserAId == myId || m.UserBId == myId)
-            .OrderByDescending(m => m.CreatedAtUtc)
+        var myMatches = await _db.Matches.AsNoTracking()
+            .Where(m => m.UserAId == TempUserId || m.UserBId == TempUserId)
             .ToListAsync();
 
-        // hämta "andra" userId för varje match
-        var otherIds = matches
-            .Select(m => m.UserAId == myId ? m.UserBId : m.UserAId)
-            .Distinct()
+        var otherIds = myMatches
+            .Select(m => m.UserAId == TempUserId ? m.UserBId : m.UserAId)
             .ToList();
 
-        // hämta profiler för de andra
-        var profiles = await _db.Profiles.AsNoTracking()
+        var profilesRaw = await _db.Profiles.AsNoTracking()
             .Where(p => otherIds.Contains(p.UserId))
-            .Select(p => new
-            {
-                userId = p.UserId,
-                displayName = p.DisplayName,
-                age = p.Age,
-                countryCode = p.CountryCode,
-                photoUrl = p.PhotoUrls.Count > 0 ? p.PhotoUrls[0] : ""
-            })
             .ToListAsync();
 
-        // mappa till match-lista (med createdAt)
-        var result = matches.Select(m =>
+        var profiles = profilesRaw.Select(p => new
         {
-            var otherId = (m.UserAId == myId) ? m.UserBId : m.UserAId;
-            var p = profiles.FirstOrDefault(x => x.userId == otherId);
+            userId = p.UserId,
+            displayName = p.DisplayName,
+            age = p.Age,
+            photoUrl = (p.PhotoUrls != null && p.PhotoUrls.Count > 0) ? p.PhotoUrls[0] : ""
+        }).ToList();
 
-            return new
-            {
-                matchId = m.Id,
-                createdAtUtc = m.CreatedAtUtc,
-                otherUserId = otherId,
-                displayName = p?.displayName ?? "Unknown",
-                age = p?.age ?? 0,
-                countryCode = p?.countryCode ?? "",
-                photoUrl = p?.photoUrl ?? ""
-            };
-        });
+        return Ok(profiles);
+    }
 
-        return Ok(new { matches = result });
+    [HttpPost("force-match")]
+    public async Task<IActionResult> ForceMatch([FromQuery] Guid targetUserId)
+    {
+        var meId = TempUserId;
+
+        var likeExists = await _db.Likes.AnyAsync(l =>
+            l.FromUserId == targetUserId && l.ToUserId == meId);
+
+        if (!likeExists)
+        {
+            _db.Likes.Add(new Like { FromUserId = targetUserId, ToUserId = meId });
+        }
+
+        var matchExists = await _db.Matches.AnyAsync(m =>
+            (m.UserAId == meId && m.UserBId == targetUserId) ||
+            (m.UserAId == targetUserId && m.UserBId == meId));
+
+        if (!matchExists)
+        {
+            _db.Matches.Add(new Match { UserAId = meId, UserBId = targetUserId });
+        }
+
+        await _db.SaveChangesAsync();
+        return Ok(new { message = "Force match created", targetUserId });
     }
 }

@@ -22,12 +22,12 @@ public class DevController : ControllerBase
     {
         count = Math.Clamp(count, 1, 200);
 
-        // Hämta min profil så vi seed:ar nära mig (inte Stockholm-hårdkodat)
-        var meProfile = await _db.Profiles.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.UserId == Guid.Parse("11111111-1111-1111-1111-111111111111"));
-
+        // ✅ Ta en befintlig profil som "center" (slipp hårdkodad userId)
+        var meProfile = await _db.Profiles.AsNoTracking().FirstOrDefaultAsync();
         if (meProfile == null)
-            return BadRequest("Create your profile first (POST /me/profile).");
+            return BadRequest("Skapa minst 1 profil först (POST /me/profile).");
+
+        var now = DateTime.UtcNow;
 
         for (int i = 0; i < count; i++)
         {
@@ -37,7 +37,13 @@ public class DevController : ControllerBase
             {
                 Id = userId,
                 IsVerified = true,
-                Email = $"test{i}@zullo.local"
+                Email = $"test{i}@zullo.local",
+
+                // ✅ obligatoriska fält (viktigt!)
+                CreatedAtUtc = now,
+                LikesRemaining = 999,
+                LikesResetAtUtc = now.AddHours(12),
+                MatchRadiusKm = 50
             };
 
             var profile = new Profile
@@ -63,7 +69,7 @@ public class DevController : ControllerBase
                     $"https://picsum.photos/seed/{userId}-2/600/800"
                 },
 
-                // Seed nära MIG (automatisk)
+                // ✅ Seed nära "meProfile"
                 Lat = meProfile.Lat + (Random.Shared.NextDouble() - 0.5) * 0.4,
                 Lng = meProfile.Lng + (Random.Shared.NextDouble() - 0.5) * 0.4,
                 CountryCode = meProfile.CountryCode,
@@ -71,7 +77,7 @@ public class DevController : ControllerBase
                 IsVisible = true
             };
 
-            _db.User.Add(user);       //  Users (inte User)
+            _db.User.Add(user);      // Om din DbSet heter User (som i din migration) så är detta rätt
             _db.Profiles.Add(profile);
         }
 
@@ -83,7 +89,7 @@ public class DevController : ControllerBase
     [HttpPost("clear-seed")]
     public async Task<IActionResult> ClearSeed()
     {
-        var users = await _db.User   //  Users (inte User)
+        var users = await _db.User
             .Where(u => u.Email != null && u.Email.EndsWith("@zullo.local"))
             .ToListAsync();
 
@@ -94,7 +100,7 @@ public class DevController : ControllerBase
             .ToListAsync();
 
         _db.Profiles.RemoveRange(profiles);
-        _db.User.RemoveRange(users); // Users (inte User)
+        _db.User.RemoveRange(users);
 
         await _db.SaveChangesAsync();
         return Ok(new { message = "Seed cleared", removedUsers = users.Count });
@@ -117,44 +123,6 @@ public class DevController : ControllerBase
             skips
         });
     }
-    // GET /dev/check-distances
-    [HttpGet("check-distances")]
-    public async Task<IActionResult> CheckDistances()
-    {
-        var meId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-
-        var me = await _db.Profiles.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.UserId == meId);
-
-        if (me == null)
-            return BadRequest("Create your profile first (POST /me/profile).");
-
-        // ta 10 synliga profiler (inte jag själv)
-        var others = await _db.Profiles.AsNoTracking()
-            .Where(p => p.IsVisible)
-            .Where(p => p.UserId != meId)
-            .Take(10)
-            .Select(p => new
-            {
-                p.UserId,
-                p.DisplayName,
-                p.Lat,
-                p.Lng,
-                p.CountryCode
-            })
-            .ToListAsync();
-
-        // räkna avstånd i C# (samma som feed gör)
-        var result = others.Select(p => new
-        {
-            p.UserId,
-            p.DisplayName,
-            p.Lat,
-            p.Lng,
-            p.CountryCode,
-            distanceKm = Math.Round(Zullo.Api.Services.GeoService.DistanceKm(me.Lat, me.Lng, p.Lat, p.Lng), 1)
-        });
-
-        return Ok(new { me = new { me.Lat, me.Lng, me.CountryCode }, samples = result });
-    }
 }
+
+
