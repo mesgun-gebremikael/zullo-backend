@@ -1,8 +1,10 @@
-
+ï»¿
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 using Zullo.Api.Data;
 using Npgsql;
-
 
 namespace Zullo.Api
 {
@@ -12,6 +14,7 @@ namespace Zullo.Api
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            // CORS (Flutter Web)
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("AllowFlutterWeb",
@@ -24,64 +27,97 @@ namespace Zullo.Api
                     });
             });
 
-
             NpgsqlConnection.GlobalTypeMapper.EnableDynamicJson();
 
-
-            // Add services to the container.
+            // Controllers + JSON enum support
             builder.Services.AddControllers()
-              .AddJsonOptions(o =>
-    {
-                  o.JsonSerializerOptions.Converters.Add(
-                       new System.Text.Json.Serialization.JsonStringEnumConverter()
-                  );
-              });
+                .AddJsonOptions(o =>
+                {
+                    o.JsonSerializerOptions.Converters.Add(
+                        new System.Text.Json.Serialization.JsonStringEnumConverter()
+                    );
+                });
 
-            // Swagger/OpenAPI
+            // Swagger
             builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
+            builder.Services.AddSwaggerGen(options =>
+            {
+                options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                {
+                    Name = "Authorization",
+                    Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+                    Scheme = "bearer",
+                    BearerFormat = "JWT",
+                    In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+                    Description = "Skriv: Bearer {din token}"
+                });
 
+                options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            new string[] {}
+        }
+    });
+            });
 
-
-            // Database (PostgreSQL),  lagra profiler   och likes i databasen,  ska raderas sedan om vi inte behöver det
+            // Database (PostgreSQL)
             builder.Services.AddDbContext<AppDbContext>(options =>
-             options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
-
+                options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
             builder.Services.AddScoped<Zullo.Api.Services.LikeLimitService>();
 
-            builder.Configuration.GetConnectionString("Default");
+            // ================================
+            // âœ… JWT AUTHENTICATION (NYTT)
+            // ================================
+            var jwtKey = builder.Configuration["Jwt:Key"];
+            if (string.IsNullOrWhiteSpace(jwtKey))
+                throw new Exception("Jwt:Key saknas i appsettings.json / appsettings.Development.json");
 
+            builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuer = false,
+                        ValidateAudience = false,
+                        ValidateLifetime = true,
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey =
+                            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey!)),
+                        ClockSkew = TimeSpan.FromSeconds(30)
+                    };
+                });
 
-
-
-
-           // app.UseDeveloperExceptionPage();  //tillfärlig kod ska tas bort
+            builder.Services.AddAuthorization();
 
             var app = builder.Build();
 
-
             app.UseCors("AllowFlutterWeb");
 
-
-            // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
-
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
 
-           // app.UseHttpsRedirection();
+            // app.UseHttpsRedirection();
 
-            // You can keep this even if we don't use it yet ska raderas sedan om vi inte behöver det 
+            // âœ… VIKTIGT: ordningen Ã¤r viktig
+            app.UseAuthentication();   // <--- NY
             app.UseAuthorization();
 
             app.MapControllers();
 
-            app.Run(); 
+            app.Run();
         }
     }
 }
-

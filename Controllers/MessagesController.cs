@@ -1,0 +1,131 @@
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using Zullo.Api.Data;
+using Zullo.Api.Models;
+
+namespace Zullo.Api.Controllers;
+
+[ApiController]
+[Route("messages")]
+[Authorize] // ✅ kräver JWT
+public class MessagesController : ControllerBase
+{
+    private readonly AppDbContext _db;
+
+    public MessagesController(AppDbContext db)
+    {
+        _db = db;
+    }
+
+    private Guid GetMeId()
+    {
+        var idStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(idStr) || !Guid.TryParse(idStr, out var meId))
+            throw new Exception("Missing/invalid NameIdentifier claim.");
+        return meId;
+    }
+
+    // GET /messages/thread?otherUserId=GUID
+    [HttpGet("thread")]
+    public async Task<IActionResult> GetThread([FromQuery] Guid otherUserId)
+    {
+        var meId = GetMeId();
+
+        var isMatched = await _db.Matches.AnyAsync(m =>
+            (m.UserAId == meId && m.UserBId == otherUserId) ||
+            (m.UserAId == otherUserId && m.UserBId == meId));
+
+        if (!isMatched)
+            return Forbid();
+
+        var msgs = await _db.Messages.AsNoTracking()
+            .Where(m =>
+                (m.FromUserId == meId && m.ToUserId == otherUserId) ||
+                (m.FromUserId == otherUserId && m.ToUserId == meId))
+            .OrderBy(m => m.CreatedAtUtc)
+            .Select(m => new
+            {
+                id = m.Id,
+                fromUserId = m.FromUserId,
+                toUserId = m.ToUserId,
+                text = m.Text,
+                createdAtUtc = m.CreatedAtUtc,
+                readAtUtc = m.ReadAtUtc
+            })
+            .ToListAsync();
+
+        return Ok(msgs);
+    }
+
+    public record SendMessageDto(Guid ToUserId, string Text);
+
+    // POST /messages/send
+    [HttpPost("send")]
+    public async Task<IActionResult> Send([FromBody] SendMessageDto dto)
+    {
+        var meId = GetMeId();
+
+        if (dto.ToUserId == Guid.Empty) return BadRequest("ToUserId is required.");
+        if (string.IsNullOrWhiteSpace(dto.Text)) return BadRequest("Text is required.");
+
+        var isMatched = await _db.Matches.AnyAsync(m =>
+            (m.UserAId == meId && m.UserBId == dto.ToUserId) ||
+            (m.UserAId == dto.ToUserId && m.UserBId == meId));
+
+        if (!isMatched)
+            return Forbid();
+
+        var msg = new Message
+        {
+            FromUserId = meId,
+            ToUserId = dto.ToUserId,
+            Text = dto.Text.Trim(),
+            CreatedAtUtc = DateTime.UtcNow
+        };
+
+        _db.Messages.Add(msg);
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            id = msg.Id,
+            fromUserId = msg.FromUserId,
+            toUserId = msg.ToUserId,
+            text = msg.Text,
+            createdAtUtc = msg.CreatedAtUtc,
+            readAtUtc = msg.ReadAtUtc
+        });
+    }
+
+    // POST /messages/mark-read?otherUserId=GUID
+    [HttpPost("mark-read")]
+    public async Task<IActionResult> MarkRead([FromQuery] Guid otherUserId)
+    {
+        var meId = GetMeId();
+
+        var isMatched = await _db.Matches.AnyAsync(m =>
+            (m.UserAId == meId && m.UserBId == otherUserId) ||
+            (m.UserAId == otherUserId && m.UserBId == meId));
+
+        if (!isMatched)
+            return Forbid();
+
+        var toMark = await _db.Messages
+            .Where(m => m.FromUserId == otherUserId
+                        && m.ToUserId == meId
+                        && m.ReadAtUtc == null)
+            .ToListAsync();
+
+        if (toMark.Count == 0) return Ok(new { updated = 0 });
+
+        var now = DateTime.UtcNow;
+        foreach (var m in toMark)
+            m.ReadAtUtc = now;
+
+        await _db.SaveChangesAsync();
+
+        return Ok(new { updated = toMark.Count, readAtUtc = now });
+    }
+}

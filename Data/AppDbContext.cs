@@ -13,6 +13,8 @@ public class AppDbContext : DbContext
     public DbSet<Like> Likes => Set<Like>();
     public DbSet<Match> Matches => Set<Match>();
     public DbSet<Skip> Skips => Set<Skip>();
+    public DbSet<Message> Messages => Set<Message>();
+
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -39,5 +41,18 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Profile>()
             .Property(p => p.PhotoUrls)
             .HasColumnType("jsonb");
+
+        modelBuilder.Entity<Message>(e =>
+        {
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.Text)
+                .IsRequired()
+                .HasMaxLength(2000);
+
+            e.HasIndex(x => new { x.FromUserId, x.ToUserId, x.CreatedAtUtc });
+            e.HasIndex(x => new { x.ToUserId, x.CreatedAtUtc });
+        });
+
     }
 }
