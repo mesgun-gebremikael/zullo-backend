@@ -2,6 +2,8 @@
 using Microsoft.EntityFrameworkCore;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Zullo.Api.Controllers;
 
@@ -121,6 +123,20 @@ public class DevController : ControllerBase
             profilesVisible,
             likes,
             skips
+        });
+    }
+    [HttpGet("whoami")]
+    [Authorize]
+    public IActionResult WhoAmI()
+    {
+        var nameId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var email = User.FindFirstValue(ClaimTypes.Email);
+
+        return Ok(new
+        {
+            nameIdentifier = nameId,
+            email,
+            allClaims = User.Claims.Select(c => new { c.Type, c.Value }).ToList()
         });
     }
 }

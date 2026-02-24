@@ -1,7 +1,7 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
 
@@ -9,7 +9,7 @@ namespace Zullo.Api.Controllers;
 
 [ApiController]
 [Route("matches")]
-[Authorize]
+[Authorize] // kräver JWT
 public class MatchesController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -19,11 +19,11 @@ public class MatchesController : ControllerBase
         _db = db;
     }
 
-    private Guid GetMeId()
+    private Guid GetMeIdOrThrow()
     {
-        var idStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(idStr) || !Guid.TryParse(idStr, out var meId))
-            throw new Exception("Missing/invalid NameIdentifier claim.");
+        var meIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(meIdStr) || !Guid.TryParse(meIdStr, out var meId))
+            throw new UnauthorizedAccessException("Missing/invalid user id in token.");
         return meId;
     }
 
@@ -31,12 +31,16 @@ public class MatchesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetMyMatches()
     {
-        var meId = GetMeId();
+        Guid meId;
+        try { meId = GetMeIdOrThrow(); }
+        catch { return Unauthorized(); }
 
+        // 1) Hämta mina matches
         var myMatches = await _db.Matches.AsNoTracking()
             .Where(m => m.UserAId == meId || m.UserBId == meId)
             .ToListAsync();
 
+        // 2) Plocka ut "andra personens userId" för varje match
         var otherIds = myMatches
             .Select(m => m.UserAId == meId ? m.UserBId : m.UserAId)
             .Distinct()
@@ -45,10 +49,12 @@ public class MatchesController : ControllerBase
         if (otherIds.Count == 0)
             return Ok(new List<object>());
 
+        // 3) Hämta profiler för de andra användarna
         var profilesRaw = await _db.Profiles.AsNoTracking()
             .Where(p => otherIds.Contains(p.UserId))
             .ToListAsync();
 
+        // 4) Hämta senaste meddelande per otherUserId + hasUnread
         var lastMsgs = await _db.Messages.AsNoTracking()
             .Where(m =>
                 (m.FromUserId == meId && otherIds.Contains(m.ToUserId)) ||
@@ -59,12 +65,17 @@ public class MatchesController : ControllerBase
             {
                 otherUserId = g.Key,
 
-                lastMessageText = g.OrderByDescending(x => x.CreatedAtUtc)
-                    .Select(x => x.Text).FirstOrDefault(),
+                lastMessageText = g
+                    .OrderByDescending(x => x.CreatedAtUtc)
+                    .Select(x => x.Text)
+                    .FirstOrDefault(),
 
-                lastMessageAtUtc = g.OrderByDescending(x => x.CreatedAtUtc)
-                    .Select(x => (DateTime?)x.CreatedAtUtc).FirstOrDefault(),
+                lastMessageAtUtc = g
+                    .OrderByDescending(x => x.CreatedAtUtc)
+                    .Select(x => (DateTime?)x.CreatedAtUtc)
+                    .FirstOrDefault(),
 
+                // ✅ Olästa = meddelanden från other -> mig som saknar ReadAtUtc
                 hasUnread = g.Any(x =>
                     x.FromUserId == g.Key &&
                     x.ToUserId == meId &&
@@ -75,6 +86,7 @@ public class MatchesController : ControllerBase
 
         var lastMap = lastMsgs.ToDictionary(x => x.otherUserId, x => x);
 
+        // 5) Slå ihop profiler + last message i ett svar till frontend
         var result = profilesRaw.Select(p =>
         {
             lastMap.TryGetValue(p.UserId, out var last);
@@ -84,30 +96,46 @@ public class MatchesController : ControllerBase
                 userId = p.UserId,
                 displayName = p.DisplayName,
                 age = p.Age,
-                photoUrl = (p.PhotoUrls != null && p.PhotoUrls.Count > 0) ? p.PhotoUrls[0] : "",
+
+                photoUrl = (p.PhotoUrls != null && p.PhotoUrls.Count > 0)
+                    ? p.PhotoUrls[0]
+                    : "",
+
                 lastMessageText = last?.lastMessageText,
                 lastMessageAtUtc = last?.lastMessageAtUtc,
                 hasUnread = last?.hasUnread ?? false
             };
-        }).ToList();
-
-        // sort: senaste först
-        result = result
-            .OrderByDescending(x => x.lastMessageAtUtc ?? DateTime.MinValue)
-            .ToList();
+        })
+        // ✅ Sortera här (unread först, sen senaste message)
+        .OrderByDescending(x => x.hasUnread)
+        .ThenByDescending(x => x.lastMessageAtUtc ?? DateTime.MinValue)
+        .ToList();
 
         return Ok(result);
     }
 
-    // ✅ POST /matches/force-match?targetUserId=GUID
+    // ✅ POST /matches/force-match?targetUserId=<GUID>
+    // För test: skapar Like + Match om det saknas
     [HttpPost("force-match")]
     public async Task<IActionResult> ForceMatch([FromQuery] Guid targetUserId)
     {
-        var meId = GetMeId();
+        Guid meId;
+        try { meId = GetMeIdOrThrow(); }
+        catch { return Unauthorized(); }
 
         if (targetUserId == Guid.Empty) return BadRequest("targetUserId is required.");
-        if (targetUserId == meId) return BadRequest("Cannot match yourself.");
+        if (targetUserId == meId) return BadRequest("Cannot match with yourself.");
 
+        // Skapa Like (target -> me) om den inte finns (bara för test)
+        var likeExists = await _db.Likes.AnyAsync(l =>
+            l.FromUserId == targetUserId && l.ToUserId == meId);
+
+        if (!likeExists)
+        {
+            _db.Likes.Add(new Like { FromUserId = targetUserId, ToUserId = meId });
+        }
+
+        // Skapa Match om den inte finns (A/B spelar ingen roll)
         var matchExists = await _db.Matches.AnyAsync(m =>
             (m.UserAId == meId && m.UserBId == targetUserId) ||
             (m.UserAId == targetUserId && m.UserBId == meId));
@@ -115,9 +143,15 @@ public class MatchesController : ControllerBase
         if (!matchExists)
         {
             _db.Matches.Add(new Match { UserAId = meId, UserBId = targetUserId });
-            await _db.SaveChangesAsync();
         }
 
-        return Ok(new { message = "Force match created", meId, targetUserId });
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "Force match created",
+            meId,
+            targetUserId
+        });
     }
 }
