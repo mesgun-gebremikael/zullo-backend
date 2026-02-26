@@ -29,36 +29,59 @@ namespace Zullo.Api.Controllers
                 string.IsNullOrWhiteSpace(request.Password))
                 return BadRequest("Email and password required.");
 
-            var exists = await _db.User
-                .AnyAsync(x => x.Email == request.Email);
-
+            var exists = await _db.User.AnyAsync(x => x.Email == request.Email);
             if (exists)
                 return BadRequest("User already exists.");
+
+            // ✅ HASHA lösenordet
+            var hash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
             var user = new User
             {
                 Email = request.Email,
-                IsVerified = true
+                IsVerified = true,
+                PasswordHash = hash,
+
+                // om du har dessa i modellen, sätt rimliga defaults
+                CreatedAtUtc = DateTime.UtcNow,
+                LikesRemaining = 50,
+                LikesResetAtUtc = DateTime.UtcNow.AddHours(12),
+                MatchRadiusKm = 50
             };
 
             _db.User.Add(user);
             await _db.SaveChangesAsync();
 
+            // ✅ (valfritt) direkt token vid register
+            var token = GenerateJwt(user);
+
             return Ok(new
             {
                 message = "User created",
-                userId = user.Id
+                token,
+                userId = user.Id,
+                email = user.Email
             });
         }
 
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            var user = await _db.User
-                .FirstOrDefaultAsync(x => x.Email == request.Email);
+            if (string.IsNullOrWhiteSpace(request.Email) ||
+                string.IsNullOrWhiteSpace(request.Password))
+                return BadRequest("Email and password required.");
 
+            var user = await _db.User.FirstOrDefaultAsync(x => x.Email == request.Email);
             if (user == null)
-                return Unauthorized("Invalid email.");
+                return Unauthorized("Invalid email or password.");
+
+            // ✅ skydd mot gamla null-rader
+            if (string.IsNullOrWhiteSpace(user.PasswordHash))
+                return Unauthorized("User has no password set. Re-register this user.");
+
+            var ok = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
+            if (!ok)
+                return Unauthorized("Invalid email or password.");
 
             var token = GenerateJwt(user);
 

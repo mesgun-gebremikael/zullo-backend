@@ -10,6 +10,7 @@ namespace Zullo.Api.Models
         // Auth identifiers (one or more can exist)
         public string? Email { get; set; }
         public string? PhoneNumber { get; set; }
+        public string PasswordHash { get; set; } = "";
         public string? GoogleSubject { get; set; } // unique id from Google
 
         public bool IsVerified { get; set; } = false; // verified login method
