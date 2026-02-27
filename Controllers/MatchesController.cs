@@ -39,6 +39,10 @@ public class MatchesController : ControllerBase
         var myMatches = await _db.Matches.AsNoTracking()
             .Where(m => m.UserAId == meId || m.UserBId == meId)
             .ToListAsync();
+        var matchCreatedMap = myMatches.ToDictionary(
+           m => (m.UserAId == meId ? m.UserBId : m.UserAId),
+            m => m.CreatedAtUtc
+);
 
         // 2) Plocka ut "andra personens userId" för varje match
         var otherIds = myMatches
@@ -103,13 +107,15 @@ public class MatchesController : ControllerBase
 
                 lastMessageText = last?.lastMessageText,
                 lastMessageAtUtc = last?.lastMessageAtUtc,
+                matchCreatedAtUtc = matchCreatedMap.TryGetValue(p.UserId, out var mc) ? mc : (DateTime?)null,
                 hasUnread = last?.hasUnread ?? false
+
             };
         })
         // ✅ Sortera här (unread först, sen senaste message)
         .OrderByDescending(x => x.hasUnread)
-        .ThenByDescending(x => x.lastMessageAtUtc ?? DateTime.MinValue)
-        .ToList();
+         .ThenByDescending(x => x.lastMessageAtUtc ?? x.matchCreatedAtUtc ?? DateTime.MinValue)
+          .ToList();
 
         return Ok(result);
     }
