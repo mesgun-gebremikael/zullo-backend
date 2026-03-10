@@ -27,11 +27,22 @@ public class MessagesController : ControllerBase
         return meId;
     }
 
+    private async Task<bool> IsBlockedAsync(Guid meId, Guid otherUserId)
+    {
+        return await _db.Blocks.AnyAsync(b =>
+            (b.FromUserId == meId && b.BlockedUserId == otherUserId) ||
+            (b.FromUserId == otherUserId && b.BlockedUserId == meId));
+    }
+
     // GET /messages/thread?otherUserId=GUID
     [HttpGet("thread")]
     public async Task<IActionResult> GetThread([FromQuery] Guid otherUserId)
     {
         var meId = GetMeId();
+
+        var isBlocked = await IsBlockedAsync(meId, otherUserId);
+        if (isBlocked)
+            return Forbid();
 
         var isMatched = await _db.Matches.AnyAsync(m =>
             (m.UserAId == meId && m.UserBId == otherUserId) ||
@@ -66,6 +77,10 @@ public class MessagesController : ControllerBase
     public async Task<IActionResult> Send([FromBody] SendMessageDto dto)
     {
         var meId = GetMeId();
+
+        var isBlocked = await IsBlockedAsync(meId, dto.ToUserId);
+        if (isBlocked)
+            return Forbid();
 
         if (dto.ToUserId == Guid.Empty) return BadRequest("ToUserId is required.");
         if (string.IsNullOrWhiteSpace(dto.Text)) return BadRequest("Text is required.");
@@ -104,6 +119,10 @@ public class MessagesController : ControllerBase
     public async Task<IActionResult> MarkRead([FromQuery] Guid otherUserId)
     {
         var meId = GetMeId();
+
+        var isBlocked = await IsBlockedAsync(meId, otherUserId);
+        if (isBlocked)
+            return Forbid();
 
         var isMatched = await _db.Matches.AnyAsync(m =>
             (m.UserAId == meId && m.UserBId == otherUserId) ||
