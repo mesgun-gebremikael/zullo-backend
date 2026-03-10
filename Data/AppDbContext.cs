@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<Skip> Skips => Set<Skip>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Report> Reports => Set<Report>();
+    public DbSet<Block> Blocks => Set<Block>();
 
 
 
