@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using System.Linq;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
 using Zullo.Api.Services;
@@ -10,7 +11,7 @@ namespace Zullo.Api.Controllers;
 
 [ApiController]
 [Route("swipe")]
-[Authorize] // ✅ kräver JWT på alla endpoints i denna controller
+[Authorize] // kräver JWT på alla endpoints i denna controller
 public class SwipeController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -22,7 +23,7 @@ public class SwipeController : ControllerBase
         _likeLimit = likeLimit;
     }
 
-    // Liten hjälpfunktion: plockar ut userId från JWT
+    // plockar ut userId från JWT
     private bool TryGetMeId(out Guid meId)
     {
         meId = Guid.Empty;
@@ -57,12 +58,12 @@ public class SwipeController : ControllerBase
         var myLng = myProfile.Lng;
 
         // Exkludera redan swipade
-        var likedIds = await _db.Likes
+        var likedIds = await _db.Likes.AsNoTracking()
             .Where(l => l.FromUserId == meId)
             .Select(l => l.ToUserId)
             .ToListAsync();
 
-        var skippedIds = await _db.Skips
+        var skippedIds = await _db.Skips.AsNoTracking()
             .Where(s => s.FromUserId == meId)
             .Select(s => s.ToUserId)
             .ToListAsync();
@@ -70,14 +71,14 @@ public class SwipeController : ControllerBase
         var excluded = likedIds.Concat(skippedIds).ToHashSet();
         excluded.Add(meId);
 
-        // Hämta kandidater
+        // Hämta kandidater (SQL slutar här)
         var candidates = await _db.Profiles.AsNoTracking()
             .Where(p => p.IsVisible)
             .Where(p => !excluded.Contains(p.UserId))
             .Take(200)
             .ToListAsync();
 
-        // Räkna avstånd och filtrera inom radien
+        // Räkna avstånd och filtrera inom radien (C#)
         var result = candidates
             .Select(p => new
             {
@@ -92,8 +93,10 @@ public class SwipeController : ControllerBase
                 p.Pets,
                 p.Interests,
                 p.PhotoUrls,
-                // ✅ säker "första bild" för UI (om du vill)
-                photoUrl = (p.PhotoUrls != null && p.PhotoUrls.Count > 0) ? p.PhotoUrls[0] : "",
+
+                // ✅ jsonb-safe: första bild (utan Count / [0])
+                photoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",
+
                 p.CountryCode,
                 distanceKm = Math.Round(GeoService.DistanceKm(myLat, myLng, p.Lat, p.Lng), 1)
             })

@@ -1,4 +1,5 @@
 ﻿using System.Security.Claims;
+using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -27,7 +28,7 @@ public class MatchesController : ControllerBase
         return meId;
     }
 
-    // ✅ GET /matches
+    // GET /matches
     [HttpGet]
     public async Task<IActionResult> GetMyMatches()
     {
@@ -39,10 +40,12 @@ public class MatchesController : ControllerBase
         var myMatches = await _db.Matches.AsNoTracking()
             .Where(m => m.UserAId == meId || m.UserBId == meId)
             .ToListAsync();
+
+        // map: otherUserId -> matchCreatedAtUtc (för sort fallback när ingen message finns)
         var matchCreatedMap = myMatches.ToDictionary(
-           m => (m.UserAId == meId ? m.UserBId : m.UserAId),
+            m => (m.UserAId == meId ? m.UserBId : m.UserAId),
             m => m.CreatedAtUtc
-);
+        );
 
         // 2) Plocka ut "andra personens userId" för varje match
         var otherIds = myMatches
@@ -53,7 +56,7 @@ public class MatchesController : ControllerBase
         if (otherIds.Count == 0)
             return Ok(new List<object>());
 
-        // 3) Hämta profiler för de andra användarna
+        // 3) Hämta profiler för de andra användarna (SQL slutar här)
         var profilesRaw = await _db.Profiles.AsNoTracking()
             .Where(p => otherIds.Contains(p.UserId))
             .ToListAsync();
@@ -79,7 +82,7 @@ public class MatchesController : ControllerBase
                     .Select(x => (DateTime?)x.CreatedAtUtc)
                     .FirstOrDefault(),
 
-                // ✅ Olästa = meddelanden från other -> mig som saknar ReadAtUtc
+                // Olästa = meddelanden från other -> mig som saknar ReadAtUtc
                 hasUnread = g.Any(x =>
                     x.FromUserId == g.Key &&
                     x.ToUserId == meId &&
@@ -90,7 +93,7 @@ public class MatchesController : ControllerBase
 
         var lastMap = lastMsgs.ToDictionary(x => x.otherUserId, x => x);
 
-        // 5) Slå ihop profiler + last message i ett svar till frontend
+        // 5) Slå ihop profiler + last message i ett svar till frontend (C#)
         var result = profilesRaw.Select(p =>
         {
             lastMap.TryGetValue(p.UserId, out var last);
@@ -101,26 +104,28 @@ public class MatchesController : ControllerBase
                 displayName = p.DisplayName,
                 age = p.Age,
 
-                photoUrl = (p.PhotoUrls != null && p.PhotoUrls.Count > 0)
-                    ? p.PhotoUrls[0]
-                    : "",
+                // ✅ jsonb-safe (ingen Count, ingen [0])
+                photoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",
 
                 lastMessageText = last?.lastMessageText,
                 lastMessageAtUtc = last?.lastMessageAtUtc,
-                matchCreatedAtUtc = matchCreatedMap.TryGetValue(p.UserId, out var mc) ? mc : (DateTime?)null,
-                hasUnread = last?.hasUnread ?? false
 
+                matchCreatedAtUtc = matchCreatedMap.TryGetValue(p.UserId, out var mc)
+                    ? mc
+                    : (DateTime?)null,
+
+                hasUnread = last?.hasUnread ?? false
             };
         })
-        // ✅ Sortera här (unread först, sen senaste message)
+        // Sortera: unread först, sen senaste message, annars matchCreatedAtUtc
         .OrderByDescending(x => x.hasUnread)
-         .ThenByDescending(x => x.lastMessageAtUtc ?? x.matchCreatedAtUtc ?? DateTime.MinValue)
-          .ToList();
+        .ThenByDescending(x => x.lastMessageAtUtc ?? x.matchCreatedAtUtc ?? DateTime.MinValue)
+        .ToList();
 
         return Ok(result);
     }
 
-    // ✅ POST /matches/force-match?targetUserId=<GUID>
+    // POST /matches/force-match?targetUserId=<GUID>
     // För test: skapar Like + Match om det saknas
     [HttpPost("force-match")]
     public async Task<IActionResult> ForceMatch([FromQuery] Guid targetUserId)
