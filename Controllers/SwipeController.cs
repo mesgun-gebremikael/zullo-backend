@@ -68,7 +68,15 @@ public class SwipeController : ControllerBase
             .Select(s => s.ToUserId)
             .ToListAsync();
 
-        var excluded = likedIds.Concat(skippedIds).ToHashSet();
+        var blockedIds = await _db.Blocks.AsNoTracking()
+           .Where(b => b.FromUserId == meId || b.BlockedUserId == meId)
+            .Select(b => b.FromUserId == meId ? b.BlockedUserId : b.FromUserId)
+            .ToListAsync();
+
+        var excluded = likedIds
+          .Concat(skippedIds)
+           .Concat(blockedIds)
+          .ToHashSet();
         excluded.Add(meId);
 
         // Hämta kandidater (SQL slutar här)

@@ -119,7 +119,7 @@ public class MatchesController : ControllerBase
                 displayName = p.DisplayName,
                 age = p.Age,
 
-                // ✅ jsonb-safe (ingen Count, ingen [0])
+                //  jsonb-safe (ingen Count, ingen [0])
                 photoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",
 
                 lastMessageText = last?.lastMessageText,
