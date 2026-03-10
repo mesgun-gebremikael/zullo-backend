@@ -41,6 +41,21 @@ public class MatchesController : ControllerBase
             .Where(m => m.UserAId == meId || m.UserBId == meId)
             .ToListAsync();
 
+        // Hämta blockerade användare
+        var blockedIds = await _db.Blocks
+            .Where(b => b.FromUserId == meId || b.BlockedUserId == meId)
+            .Select(b => b.FromUserId == meId ? b.BlockedUserId : b.FromUserId)
+            .ToListAsync();
+
+        //ta bort blockerade matcher
+         myMatches = myMatches
+         .Where(m =>
+         {
+             var otherId = m.UserAId == meId ? m.UserBId : m.UserAId;
+              return !blockedIds.Contains(otherId);
+         })
+            .ToList();
+
         // map: otherUserId -> matchCreatedAtUtc (för sort fallback när ingen message finns)
         var matchCreatedMap = myMatches.ToDictionary(
             m => (m.UserAId == meId ? m.UserBId : m.UserAId),
