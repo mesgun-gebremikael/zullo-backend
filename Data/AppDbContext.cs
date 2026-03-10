@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<Match> Matches => Set<Match>();
     public DbSet<Skip> Skips => Set<Skip>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<Report> Reports => Set<Report>();
 
 
 
