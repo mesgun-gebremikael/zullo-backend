@@ -125,17 +125,18 @@ public class SwipeController : ControllerBase
         if (!TryGetMeId(out var meId))
             return Unauthorized("Invalid token.");
 
-        // 1) kolla like-limit
-        var ok = await _likeLimit.TryConsumeLikeAsync(meId);
-        if (!ok)
-            return StatusCode(429, new { message = "Like limit reached. Try again later." });
-
-        // 2) spara like
+        // 1) kolla om like redan finns
         var already = await _db.Likes.AnyAsync(l =>
             l.FromUserId == meId && l.ToUserId == dto.TargetUserId);
 
         if (!already)
         {
+            // 2) bara om det är en ny like -> konsumera like
+            var ok = await _likeLimit.TryConsumeLikeAsync(meId);
+            if (!ok)
+                return StatusCode(429, new { message = "Like limit reached. Try again later." });
+
+            // 3) spara like
             _db.Likes.Add(new Like
             {
                 FromUserId = meId,
@@ -144,7 +145,7 @@ public class SwipeController : ControllerBase
             await _db.SaveChangesAsync();
         }
 
-        // 3) match om den andra redan har gillat mig
+        // 4) match om den andra redan har gillat mig
         var reciprocal = await _db.Likes.AnyAsync(l =>
             l.FromUserId == dto.TargetUserId && l.ToUserId == meId);
 

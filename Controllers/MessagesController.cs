@@ -9,7 +9,7 @@ namespace Zullo.Api.Controllers;
 
 [ApiController]
 [Route("messages")]
-[Authorize] // ✅ kräver JWT
+[Authorize] //  kräver JWT
 public class MessagesController : ControllerBase
 {
     private readonly AppDbContext _db;
