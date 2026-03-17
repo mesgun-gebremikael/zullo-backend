@@ -47,6 +47,10 @@ public class SwipeController : ControllerBase
 
         var myRadiusKm = me.MatchRadiusKm;
 
+        var minAge = 18;
+        var maxAge =  99;
+       // var preferredGender = me.PreferredGender; // om du har det
+
         // Hämta min profil (för lat/lng)
         var myProfile = await _db.Profiles.AsNoTracking()
             .FirstOrDefaultAsync(p => p.UserId == meId);
@@ -81,10 +85,19 @@ public class SwipeController : ControllerBase
 
         // Hämta kandidater (SQL slutar här)
         var candidates = await _db.Profiles.AsNoTracking()
-            .Where(p => p.IsVisible)
-            .Where(p => !excluded.Contains(p.UserId))
-            .Take(200)
-            .ToListAsync();
+          .Where(p => p.IsVisible)
+           .Where(p => !excluded.Contains(p.UserId))
+
+          // 🎯 FILTER
+            .Where(p => p.Age >= minAge && p.Age <= maxAge)
+            // samma intention
+             .Where(p => p.Intention == myProfile.Intention)
+
+            //samma relgion
+            .Where(p => p.Religion == myProfile.Religion)
+
+          .Take(200)
+         .ToListAsync();
 
         // Räkna avstånd och filtrera inom radien (C#)
         var result = candidates
