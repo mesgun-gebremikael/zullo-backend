@@ -133,9 +133,8 @@ public class MatchesController : ControllerBase
             };
         })
         // Sortera: unread först, sen senaste message, annars matchCreatedAtUtc
-        .OrderByDescending(x => x.hasUnread)
-        .ThenByDescending(x => x.lastMessageAtUtc ?? x.matchCreatedAtUtc ?? DateTime.MinValue)
-        .ToList();
+        .OrderByDescending(x => x.lastMessageAtUtc ?? x.matchCreatedAtUtc ?? DateTime.MinValue)
+         .ToList();
 
         return Ok(result);
     }
