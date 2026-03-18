@@ -33,7 +33,10 @@ public class SwipeController : ControllerBase
 
     // GET /swipe/feed
     [HttpGet("feed")]
-    public async Task<IActionResult> GetFeed([FromQuery] int take = 10)
+    public async Task<IActionResult> GetFeed(
+        [FromQuery] int minAge = 18,
+        [FromQuery] int maxAge = 99,
+        [FromQuery] int take = 10)
     {
         take = Math.Clamp(take, 1, 50);
 
@@ -47,8 +50,7 @@ public class SwipeController : ControllerBase
 
         var myRadiusKm = me.MatchRadiusKm;
 
-        var minAge = 18;
-        var maxAge =  99;
+       
        // var preferredGender = me.PreferredGender; // om du har det
 
         // Hämta min profil (för lat/lng)
