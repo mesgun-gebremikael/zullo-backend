@@ -93,17 +93,16 @@ public class SwipeController : ControllerBase
         // Hämta kandidater (SQL slutar här)
         var candidates = await _db.Profiles.AsNoTracking()
           .Where(p => p.IsVisible)
-           .Where(p => !excluded.Contains(p.UserId))
+         //  .Where(p => !excluded.Contains(p.UserId))
 
           // 🎯 FILTER
             .Where(p => p.Age >= minAge && p.Age <= maxAge)
 
               .Take(200)
          .ToListAsync();
-        // OPTIONAL FILTER (soft filter istället för hard)
-       
 
-        
+        var candidateCount = candidates.Count;
+
         // Räkna avstånd och filtrera inom radien (C#)
         var result = candidates
             .Select(p => new
@@ -124,14 +123,31 @@ public class SwipeController : ControllerBase
                 photoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",
 
                 p.CountryCode,
-                distanceKm = Math.Round(GeoService.DistanceKm(myLat, myLng, p.Lat, p.Lng), 1)
+                 distanceKm = Math.Round(GeoService.DistanceKm(myLat, myLng, p.Lat, p.Lng), 1)
+                
+
             })
             .Where(x => x.distanceKm <= myRadiusKm)
             .OrderBy(x => x.distanceKm)
             .Take(take)
             .ToList();
-
-        return Ok(new { radiusKm = myRadiusKm, profiles = result });
+        var resultCount = result.Count;
+        // return Ok(new { radiusKm = myRadiusKm, profiles = result });
+        var totalProfilesInDb = await _db.Profiles.CountAsync();
+        var visibleprofilesInDb = await _db.Profiles.CountAsync(p => p.IsVisible);
+        return Ok(new
+        {
+            radiusKm = myRadiusKm,
+            minAge,
+            maxAge,
+            totalProfilesInDb,
+            visibleprofilesInDb,
+            candidateCount,
+            resultCount,
+            myLat,
+            myLng,
+            profiles = result
+        });
     }
 
     public record SwipeTargetDto(Guid TargetUserId);
