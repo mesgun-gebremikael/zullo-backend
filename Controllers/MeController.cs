@@ -99,8 +99,29 @@ namespace Zullo.Api.Controllers
             catch { return Unauthorized(); }
 
             var profile = await _db.Profiles
-                .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.UserId == meId);
+    .AsNoTracking()
+    .Where(p => p.UserId == meId)
+    .Select(p => new MyProfileDto
+    {
+        Id = p.Id,
+        UserId = p.UserId,
+        DisplayName = p.DisplayName,
+        Age = p.Age,
+        Gender = p.Gender,
+        Bio = p.Bio,
+        Intention = p.Intention,
+        Religion = p.Religion,
+        Workout = p.Workout,
+        Smoking = p.Smoking,
+        Pets = p.Pets,
+        Interests = p.Interests,
+        PhotoUrls = p.PhotoUrls,
+        Lat = p.Lat,
+        Lng = p.Lng,
+        CountryCode = p.CountryCode,
+        IsVisible = p.IsVisible
+    })
+    .FirstOrDefaultAsync();
 
             if (profile == null)
                 return NotFound("No profile yet.");
