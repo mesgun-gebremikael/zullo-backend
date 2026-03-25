@@ -29,6 +29,14 @@ public class MessagesController : ControllerBase
             (b.FromUserId == otherUserId && b.BlockedUserId == meId));
     }
 
+    private async Task<bool> IsMatchedAsync(Guid meId, Guid otherUserId)
+    {
+        // Chat är bara tillåten mellan två användare som har matchat
+        return await _db.Matches.AnyAsync(m =>
+            (m.UserAId == meId && m.UserBId == otherUserId) ||
+            (m.UserAId == otherUserId && m.UserBId == meId));
+    }
+
     // GET /messages/thread?otherUserId=GUID
     [HttpGet("thread")]
     public async Task<IActionResult> GetThread([FromQuery] Guid otherUserId)
@@ -39,10 +47,7 @@ public class MessagesController : ControllerBase
         if (isBlocked)
             return Forbid();
 
-        var isMatched = await _db.Matches.AnyAsync(m =>
-            (m.UserAId == meId && m.UserBId == otherUserId) ||
-            (m.UserAId == otherUserId && m.UserBId == meId));
-
+        var isMatched = await IsMatchedAsync(meId, otherUserId);
         if (!isMatched)
             return Forbid();
 
@@ -79,10 +84,7 @@ public class MessagesController : ControllerBase
         if (dto.ToUserId == Guid.Empty) return BadRequest("ToUserId is required.");
         if (string.IsNullOrWhiteSpace(dto.Text)) return BadRequest("Text is required.");
 
-        var isMatched = await _db.Matches.AnyAsync(m =>
-            (m.UserAId == meId && m.UserBId == dto.ToUserId) ||
-            (m.UserAId == dto.ToUserId && m.UserBId == meId));
-
+        var isMatched = await IsMatchedAsync(meId, dto.ToUserId);
         if (!isMatched)
             return Forbid();
 
@@ -118,10 +120,7 @@ public class MessagesController : ControllerBase
         if (isBlocked)
             return Forbid();
 
-        var isMatched = await _db.Matches.AnyAsync(m =>
-            (m.UserAId == meId && m.UserBId == otherUserId) ||
-            (m.UserAId == otherUserId && m.UserBId == meId));
-
+        var isMatched = await IsMatchedAsync(meId, otherUserId);
         if (!isMatched)
             return Forbid();
 
