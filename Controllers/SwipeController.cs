@@ -237,6 +237,9 @@ public class SwipeController : ControllerBase
             await _db.SaveChangesAsync();
         }
 
-        return Ok(new { skipped = true });
+        return Ok(new SkipResponseDto
+        {
+            Skipped = true
+        });
     }
 }
