@@ -119,7 +119,7 @@ public class SwipeController : ControllerBase
               .Take(200)
          .ToListAsync();
 
-        var candidateCount = candidates.Count;
+        
 
         // Räkna avstånd och filtrera inom radien (C#)
         var result = candidates
@@ -147,21 +147,10 @@ public class SwipeController : ControllerBase
      .OrderBy(x => x.DistanceKm)
      .Take(take)
      .ToList();
-        var resultCount = result.Count;
-        // return Ok(new { radiusKm = myRadiusKm, profiles = result });
-        var totalProfilesInDb = await _db.Profiles.CountAsync();
-        var visibleprofilesInDb = await _db.Profiles.CountAsync(p => p.IsVisible);
+
         return Ok(new SwipeFeedResponseDto
         {
             RadiusKm = myRadiusKm,
-            MinAge = minAge,
-            MaxAge = maxAge,
-            TotalProfilesInDb = totalProfilesInDb,
-            VisibleProfilesInDb = visibleprofilesInDb,
-            CandidateCount = candidateCount,
-            ResultCount = resultCount,
-            MyLat = myLat,
-            MyLng = myLng,
             Profiles = result
         });
     }
