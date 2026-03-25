@@ -41,7 +41,7 @@ public class SwipeController : ControllerBase
             return Unauthorized("Invalid token.");
 
         // Hämta min user (för radie)
-        var me = await _db.User.AsNoTracking().FirstOrDefaultAsync(u => u.Id == meId);
+        var me = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == meId);
         if (me == null)
             return Unauthorized("User not found.");
 

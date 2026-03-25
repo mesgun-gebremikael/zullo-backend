@@ -80,7 +80,7 @@ public class DevController : ControllerBase
                 IsVisible = true
             };
 
-            _db.User.Add(user);      // Om din DbSet heter User (som i din migration) så är detta rätt
+            _db.Users.Add(user);      // Om din DbSet heter User (som i din migration) så är detta rätt
             _db.Profiles.Add(profile);
         }
 
@@ -96,7 +96,7 @@ public class DevController : ControllerBase
     [HttpPost("clear-seed")]
     public async Task<IActionResult> ClearSeed()
     {
-        var users = await _db.User
+        var users = await _db.Users
             .Where(u => u.Email != null && u.Email.EndsWith("@zullo.local"))
             .ToListAsync();
 
@@ -147,7 +147,7 @@ public class DevController : ControllerBase
         _db.Blocks.RemoveRange(blocks);
         _db.Reports.RemoveRange(reports);
         _db.Profiles.RemoveRange(profiles);
-        _db.User.RemoveRange(users);
+        _db.Users.RemoveRange(users);
 
         await _db.SaveChangesAsync();
 

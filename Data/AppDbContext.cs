@@ -7,8 +7,7 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    public DbSet<User> User => Set<User>();
-    public DbSet<Profile> Profiles => Set<Profile>();
+    public DbSet<User> Users => Set<User>(); public DbSet<Profile> Profiles => Set<Profile>();
 
     public DbSet<Like> Likes => Set<Like>();
     public DbSet<Match> Matches => Set<Match>();

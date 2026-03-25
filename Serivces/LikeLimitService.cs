@@ -29,7 +29,7 @@ public class LikeLimitService
     // Försöker använda en like. Returnerar true/false.
     public async Task<bool> TryConsumeLikeAsync(Guid userId)
     {
-        var user = await _db.User.FirstAsync(u => u.Id == userId);
+        var user = await _db.Users.FirstAsync(u => u.Id == userId);
 
         await EnsureWindowUpToDateAsync(user);
 

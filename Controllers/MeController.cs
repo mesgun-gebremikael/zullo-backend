@@ -62,7 +62,7 @@ namespace Zullo.Api.Controllers
                 return BadRequest("Age must be 18+.");
 
             // Säkerställ att User finns (nu: riktiga userId från JWT)
-            var user = await _db.User.FirstOrDefaultAsync(u => u.Id == meId);
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == meId);
             if (user == null)
                 return NotFound("User not found. Register first.");
 
@@ -142,7 +142,7 @@ namespace Zullo.Api.Controllers
             if (dto.MatchRadiusKm < 1 || dto.MatchRadiusKm > 200)
                 return BadRequest("MatchRadiusKm must be between 1 and 200.");
 
-            var user = await _db.User.FindAsync(meId);
+            var user = await _db.Users.FindAsync(meId);
             if (user == null) return NotFound("User not found.");
 
             user.MatchRadiusKm = dto.MatchRadiusKm;

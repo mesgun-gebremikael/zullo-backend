@@ -34,7 +34,7 @@ namespace Zullo.Api.Controllers
             // Normalisera email så register/login blir mindre känsligt för case och mellanslag
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-            var exists = await _db.User.AnyAsync(x => x.Email == normalizedEmail);
+            var exists = await _db.Users.AnyAsync(x => x.Email == normalizedEmail);
             if (exists)
                 return BadRequest("User already exists.");
 
@@ -54,7 +54,7 @@ namespace Zullo.Api.Controllers
                 MatchRadiusKm = 50
             };
 
-            _db.User.Add(user);
+            _db.Users.Add(user);
             await _db.SaveChangesAsync();
 
             // ✅ (valfritt) direkt token vid register
@@ -79,7 +79,7 @@ namespace Zullo.Api.Controllers
             // Samma normalisering som vid register
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-            var user = await _db.User.FirstOrDefaultAsync(x => x.Email == normalizedEmail);
+            var user = await _db.Users.FirstOrDefaultAsync(x => x.Email == normalizedEmail);
             if (user == null)
                 return Unauthorized("Invalid email or password.");
 
