@@ -22,12 +22,35 @@ namespace Zullo.Api.Controllers
             _db = db;
         }
 
-       
+        private static void MapUpsertProfileDtoToProfile(UpsertProfileDto dto, Profile profile)
+        {
+            // Grundfält för profil
+            profile.DisplayName = dto.DisplayName;
+            profile.Age = dto.Age;
+            profile.Gender = dto.Gender;
+            profile.Bio = dto.Bio;
 
-        // ===============================
-        // POST /me/profile
-        // Skapa eller uppdatera min profil
-        // ===============================
+            // Dating-preferenser / livsstil
+            profile.Intention = dto.Intention;
+            profile.Religion = dto.Religion;
+            profile.Workout = dto.Workout;
+            profile.Smoking = dto.Smoking;
+            profile.Pets = dto.Pets;
+
+            // Listor från frontend
+            profile.Interests = dto.Interests ?? new();
+            profile.PhotoUrls = dto.PhotoUrls ?? new();
+
+            // Position / land
+            profile.Lat = dto.Lat;
+            profile.Lng = dto.Lng;
+            profile.CountryCode = dto.CountryCode;
+
+            // Synlig först när minst 2 bilder finns
+            profile.IsVisible = profile.PhotoUrls.Count >= 2;
+        }
+
+
         [HttpPost("profile")]
         public async Task<IActionResult> UpsertProfile([FromBody] UpsertProfileDto dto)
         {
@@ -51,28 +74,8 @@ namespace Zullo.Api.Controllers
                 _db.Profiles.Add(profile);
             }
 
-            // Uppdatera profilfält
-            profile.DisplayName = dto.DisplayName;
-            profile.Age = dto.Age;
-            profile.Gender = dto.Gender;
-            profile.Bio = dto.Bio;
-
-            profile.Intention = dto.Intention;
-            profile.Religion = dto.Religion;
-
-            profile.Workout = dto.Workout;
-            profile.Smoking = dto.Smoking;
-            profile.Pets = dto.Pets;
-
-            profile.Interests = dto.Interests ?? new();
-            profile.PhotoUrls = dto.PhotoUrls ?? new();
-
-            profile.Lat = dto.Lat;
-            profile.Lng = dto.Lng;
-            profile.CountryCode = dto.CountryCode;
-
-            // Synlig endast om minst 2 bilder (behåller din logik)
-            profile.IsVisible = profile.PhotoUrls.Count >= 2;
+            // Mappar DTO till Profile så logiken ligger på ett ställe
+            MapUpsertProfileDtoToProfile(dto, profile);
 
             await _db.SaveChangesAsync();
 
