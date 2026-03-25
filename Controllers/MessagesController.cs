@@ -130,7 +130,13 @@ public class MessagesController : ControllerBase
                         && m.ReadAtUtc == null)
             .ToListAsync();
 
-        if (toMark.Count == 0) return Ok(new { updated = 0 });
+        if (toMark.Count == 0)
+        {
+            return Ok(new MarkReadResponseDto
+            {
+                Updated = 0
+            });
+        }
 
         var now = DateTime.UtcNow;
         foreach (var m in toMark)
@@ -138,6 +144,10 @@ public class MessagesController : ControllerBase
 
         await _db.SaveChangesAsync();
 
-        return Ok(new { updated = toMark.Count, readAtUtc = now });
+        return Ok(new MarkReadResponseDto
+        {
+            Updated = toMark.Count,
+            ReadAtUtc = now
+        });
     }
 }
