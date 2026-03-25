@@ -31,9 +31,10 @@ public class AppDbContext : DbContext
             .HasIndex(x => x.GoogleSubject);
 
         modelBuilder.Entity<User>()
-            .HasOne(u => u.Profile)
-            .WithOne(p => p.User)
-            .HasForeignKey<Profile>(p => p.UserId);
+     .HasOne(u => u.Profile)
+     .WithOne(p => p.User)
+     .HasForeignKey<Profile>(p => p.UserId)
+     .OnDelete(DeleteBehavior.Cascade);
 
         // Store lists as JSON in Postgres (simple for v1)
         modelBuilder.Entity<Profile>()
@@ -48,18 +49,62 @@ public class AppDbContext : DbContext
         {
             // Hindrar samma like från att sparas flera gånger
             e.HasIndex(x => new { x.FromUserId, x.ToUserId }).IsUnique();
+
+            e.HasOne<User>()
+          .WithMany()
+          .HasForeignKey(x => x.FromUserId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.ToUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
+
+
 
         modelBuilder.Entity<Skip>(e =>
         {
             // Hindrar samma skip från att sparas flera gånger
             e.HasIndex(x => new { x.FromUserId, x.ToUserId }).IsUnique();
-        });
 
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.FromUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.ToUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<Block>(e =>
         {
             // Hindrar samma block från att sparas flera gånger
             e.HasIndex(x => new { x.FromUserId, x.BlockedUserId }).IsUnique();
+
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.FromUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.BlockedUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Report>(e =>
+        {
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.FromUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.ReportedUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Message>(e =>
@@ -72,6 +117,16 @@ public class AppDbContext : DbContext
 
             e.HasIndex(x => new { x.FromUserId, x.ToUserId, x.CreatedAtUtc });
             e.HasIndex(x => new { x.ToUserId, x.CreatedAtUtc });
+
+            e.HasOne<User>()
+          .WithMany()
+           .HasForeignKey(x => x.FromUserId)
+           .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.ToUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
     }
