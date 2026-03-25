@@ -14,13 +14,15 @@ namespace Zullo.Api.Controllers;
 public class LikesController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly UserRelationService _userRelationService;
 
-    public LikesController(AppDbContext db)
+    public LikesController(AppDbContext db, UserRelationService userRelationService)
     {
         _db = db;
+        _userRelationService = userRelationService;
     }
 
-   
+
 
     // GET /likes/received
     [HttpGet("received")]
@@ -46,9 +48,16 @@ public class LikesController : ControllerBase
             .Select(m => m.UserAId == meId ? m.UserBId : m.UserAId)
             .ToListAsync();
 
-        // 3️ Filtrera bort de som redan är matchade
+        // 3️ Hämta blockerade användare så de inte visas i likes-listan
+        var blockedIds = await _userRelationService.GetBlockedUserIdsAsync(meId);
+
+        // Gör listorna snabbare att slå upp i
+        var matchedSet = matchedIds.ToHashSet();
+        var blockedSet = blockedIds.ToHashSet();
+
+        // 4️ Filtrera bort redan matchade och blockerade
         var filteredIds = likedMeIds
-            .Where(id => !matchedIds.Contains(id))
+            .Where(id => !matchedSet.Contains(id) && !blockedSet.Contains(id))
             .ToList();
 
         if (filteredIds.Count == 0)

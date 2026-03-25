@@ -20,6 +20,9 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        //kopplar Dbset Users -> tabell "user"
+        modelBuilder.Entity<User>().ToTable("User");
+
         modelBuilder.Entity<User>()
             .HasIndex(x => x.Email);
 

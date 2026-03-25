@@ -7,7 +7,7 @@ using Zullo.Api.Data;
 using Zullo.Api.Models;
 using Zullo.Api.Dtos;
 using Zullo.Api.Services;
-using Zullo.Api.Services;
+
 
 namespace Zullo.Api.Controllers;
 
@@ -17,13 +17,14 @@ namespace Zullo.Api.Controllers;
 public class MatchesController : ControllerBase
 {
     private readonly AppDbContext _db;
-
-    public MatchesController(AppDbContext db)
+    private readonly UserRelationService _userRelationService;
+    public MatchesController(AppDbContext db, UserRelationService userRelationService)
     {
         _db = db;
+        _userRelationService = userRelationService;
     }
 
-   
+
 
     // GET /matches
     [HttpGet]
@@ -38,14 +39,11 @@ public class MatchesController : ControllerBase
             .Where(m => m.UserAId == meId || m.UserBId == meId)
             .ToListAsync();
 
-        // Hämta blockerade användare
-        var blockedIds = await _db.Blocks
-            .Where(b => b.FromUserId == meId || b.BlockedUserId == meId)
-            .Select(b => b.FromUserId == meId ? b.BlockedUserId : b.FromUserId)
-            .ToListAsync();
+        // Hämta blockerade användare via gemensam relationsservice
+        var blockedIds = await _userRelationService.GetBlockedUserIdsAsync(meId);
 
         //ta bort blockerade matcher
-         myMatches = myMatches
+        myMatches = myMatches
          .Where(m =>
          {
              var otherId = m.UserAId == meId ? m.UserBId : m.UserAId;
