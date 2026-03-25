@@ -57,15 +57,15 @@ public class MessagesController : ControllerBase
                 (m.FromUserId == meId && m.ToUserId == otherUserId) ||
                 (m.FromUserId == otherUserId && m.ToUserId == meId))
             .OrderBy(m => m.CreatedAtUtc)
-            .Select(m => new
-            {
-                id = m.Id,
-                fromUserId = m.FromUserId,
-                toUserId = m.ToUserId,
-                text = m.Text,
-                createdAtUtc = m.CreatedAtUtc,
-                readAtUtc = m.ReadAtUtc
-            })
+           .Select(m => new MessageDto
+           {
+               Id = m.Id,
+               FromUserId = m.FromUserId,
+               ToUserId = m.ToUserId,
+               Text = m.Text,
+               CreatedAtUtc = m.CreatedAtUtc,
+               ReadAtUtc = m.ReadAtUtc
+           })
             .ToListAsync();
 
         return Ok(msgs);
@@ -103,14 +103,14 @@ public class MessagesController : ControllerBase
         _db.Messages.Add(msg);
         await _db.SaveChangesAsync();
 
-        return Ok(new
+        return Ok(new MessageDto
         {
-            id = msg.Id,
-            fromUserId = msg.FromUserId,
-            toUserId = msg.ToUserId,
-            text = msg.Text,
-            createdAtUtc = msg.CreatedAtUtc,
-            readAtUtc = msg.ReadAtUtc
+            Id = msg.Id,
+            FromUserId = msg.FromUserId,
+            ToUserId = msg.ToUserId,
+            Text = msg.Text,
+            CreatedAtUtc = msg.CreatedAtUtc,
+            ReadAtUtc = msg.ReadAtUtc
         });
     }
 
