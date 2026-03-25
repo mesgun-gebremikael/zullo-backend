@@ -50,7 +50,10 @@ public class BlocksController : ControllerBase
             .AnyAsync(x => x.FromUserId == meId && x.BlockedUserId == dto.BlockedUserId);
 
         if (alreadyBlocked)
-            return Ok(new { message = "Already blocked" });
+            return Ok(new SimpleMessageResponseDto
+            {
+                Message = "Already blocked"
+            });
 
         var block = new Block
         {
@@ -61,6 +64,9 @@ public class BlocksController : ControllerBase
         _db.Blocks.Add(block);
         await _db.SaveChangesAsync();
 
-        return Ok(new { message = "User blocked" });
+        return Ok(new SimpleMessageResponseDto
+        {
+            Message = "User blocked"
+        });
     }
 }

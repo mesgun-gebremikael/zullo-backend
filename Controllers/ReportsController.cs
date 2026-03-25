@@ -51,10 +51,10 @@ public class ReportsController : ControllerBase
         _db.Reports.Add(report);
         await _db.SaveChangesAsync();
 
-        return Ok(new
+        return Ok(new CreateReportResponseDto
         {
-            message = "Report saved",
-            report.Id
+            Message = "Report saved",
+            Id = report.Id
         });
     }
 }
