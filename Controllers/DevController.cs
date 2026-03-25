@@ -102,14 +102,55 @@ public class DevController : ControllerBase
 
         var userIds = users.Select(u => u.Id).ToList();
 
+        if (userIds.Count == 0)
+        {
+            return Ok(new ClearSeedResponseDto
+            {
+                Message = "Seed cleared",
+                RemovedUsers = 0
+            });
+        }
+
         var profiles = await _db.Profiles
             .Where(p => userIds.Contains(p.UserId))
             .ToListAsync();
 
+        var likes = await _db.Likes
+            .Where(x => userIds.Contains(x.FromUserId) || userIds.Contains(x.ToUserId))
+            .ToListAsync();
+
+        var skips = await _db.Skips
+            .Where(x => userIds.Contains(x.FromUserId) || userIds.Contains(x.ToUserId))
+            .ToListAsync();
+
+        var matches = await _db.Matches
+            .Where(x => userIds.Contains(x.UserAId) || userIds.Contains(x.UserBId))
+            .ToListAsync();
+
+        var messages = await _db.Messages
+            .Where(x => userIds.Contains(x.FromUserId) || userIds.Contains(x.ToUserId))
+            .ToListAsync();
+
+        var blocks = await _db.Blocks
+            .Where(x => userIds.Contains(x.FromUserId) || userIds.Contains(x.BlockedUserId))
+            .ToListAsync();
+
+        var reports = await _db.Reports
+            .Where(x => userIds.Contains(x.FromUserId) || userIds.Contains(x.ReportedUserId))
+            .ToListAsync();
+
+        // Ta bort beroende rader först så FK-relationer inte blockerar
+        _db.Likes.RemoveRange(likes);
+        _db.Skips.RemoveRange(skips);
+        _db.Matches.RemoveRange(matches);
+        _db.Messages.RemoveRange(messages);
+        _db.Blocks.RemoveRange(blocks);
+        _db.Reports.RemoveRange(reports);
         _db.Profiles.RemoveRange(profiles);
         _db.User.RemoveRange(users);
 
         await _db.SaveChangesAsync();
+
         return Ok(new ClearSeedResponseDto
         {
             Message = "Seed cleared",
