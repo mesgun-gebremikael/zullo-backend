@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
+using Zullo.Api.Dtos;
 
 namespace Zullo.Api.Controllers;
 
@@ -27,11 +28,7 @@ public class ReportsController : ControllerBase
         return meId;
     }
 
-    public class CreateReportDto
-    {
-        public Guid ReportedUserId { get; set; }
-        public string Reason { get; set; } = "";
-    }
+    
 
     // POST /reports
     [HttpPost]

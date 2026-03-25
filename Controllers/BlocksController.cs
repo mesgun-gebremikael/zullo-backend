@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
+using Zullo.Api.Dtos;
 
 namespace Zullo.Api.Controllers;
 
@@ -29,10 +30,7 @@ public class BlocksController : ControllerBase
         return meId;
     }
 
-    public class CreateBlockDto
-    {
-        public Guid BlockedUserId { get; set; }
-    }
+    
 
     // POST /blocks
     [HttpPost]

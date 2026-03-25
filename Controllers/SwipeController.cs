@@ -6,6 +6,7 @@ using System.Linq;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
 using Zullo.Api.Services;
+using Zullo.Api.Dtos;
 
 namespace Zullo.Api.Controllers;
 
@@ -93,7 +94,7 @@ public class SwipeController : ControllerBase
         // Hämta kandidater (SQL slutar här)
         var candidates = await _db.Profiles.AsNoTracking()
           .Where(p => p.IsVisible)
-         //  .Where(p => !excluded.Contains(p.UserId))
+           .Where(p => !excluded.Contains(p.UserId))
 
           // 🎯 FILTER
             .Where(p => p.Age >= minAge && p.Age <= maxAge)
@@ -150,7 +151,6 @@ public class SwipeController : ControllerBase
         });
     }
 
-    public record SwipeTargetDto(Guid TargetUserId);
 
     // POST /swipe/like
     [HttpPost("like")]

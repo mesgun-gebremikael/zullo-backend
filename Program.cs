@@ -75,7 +75,7 @@ namespace Zullo.Api
             builder.Services.AddScoped<Zullo.Api.Services.LikeLimitService>();
 
             // ================================
-            // ✅ JWT AUTHENTICATION (NYTT)
+            //  JWT AUTHENTICATION (NYTT)
             // ================================
             var jwtKey = builder.Configuration["Jwt:Key"];
             if (string.IsNullOrWhiteSpace(jwtKey))
@@ -111,7 +111,7 @@ namespace Zullo.Api
 
             // app.UseHttpsRedirection();
 
-            // ✅ VIKTIGT: ordningen är viktig
+            //  VIKTIGT: ordningen är viktig
             app.UseAuthentication();   // <--- NY
             app.UseAuthorization();
 

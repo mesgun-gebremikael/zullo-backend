@@ -11,4 +11,6 @@ public class Block
     public Guid BlockedUserId { get; set; }
 
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+    
 }

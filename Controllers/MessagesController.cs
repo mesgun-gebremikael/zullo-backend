@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
+using Zullo.Api.Dtos;
 
 namespace Zullo.Api.Controllers;
 
@@ -70,7 +71,6 @@ public class MessagesController : ControllerBase
         return Ok(msgs);
     }
 
-    public record SendMessageDto(Guid ToUserId, string Text);
 
     // POST /messages/send
     [HttpPost("send")]

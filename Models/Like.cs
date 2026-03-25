@@ -6,5 +6,7 @@ public class Like
     public Guid FromUserId { get; set; }
     public Guid ToUserId { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    
+
 }
 

@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Text;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
+using Zullo.Api.Dtos;
 
 namespace Zullo.Api.Controllers
 {
@@ -23,7 +24,7 @@ namespace Zullo.Api.Controllers
         }
 
         [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
+        public async Task<IActionResult> Register([FromBody] RegisterRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.Email) ||
                 string.IsNullOrWhiteSpace(request.Password))
@@ -33,7 +34,7 @@ namespace Zullo.Api.Controllers
             if (exists)
                 return BadRequest("User already exists.");
 
-            // ✅ HASHA lösenordet
+            //  HASHA lösenordet
             var hash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
             var user = new User
@@ -65,7 +66,7 @@ namespace Zullo.Api.Controllers
         }
 
         [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginRequest request)
+        public async Task<IActionResult> Login([FromBody] LoginRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.Email) ||
                 string.IsNullOrWhiteSpace(request.Password))
@@ -116,15 +117,5 @@ namespace Zullo.Api.Controllers
         }
     }
 
-    public class LoginRequest
-    {
-        public string Email { get; set; } = "";
-        public string Password { get; set; } = "";
-    }
-
-    public class RegisterRequest
-    {
-        public string Email { get; set; } = "";
-        public string Password { get; set; } = "";
-    }
+   
 }
