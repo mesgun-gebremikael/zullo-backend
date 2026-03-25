@@ -161,14 +161,20 @@ public class MatchesController : ControllerBase
             _db.Likes.Add(new Like { FromUserId = targetUserId, ToUserId = meId });
         }
 
-        // Skapa Match om den inte finns (A/B spelar ingen roll)
+        // Spara alltid match i samma ordning för att undvika A/B och B/A-dubbletter
+        var userAId = meId.CompareTo(targetUserId) < 0 ? meId : targetUserId;
+        var userBId = meId.CompareTo(targetUserId) < 0 ? targetUserId : meId;
+
         var matchExists = await _db.Matches.AnyAsync(m =>
-            (m.UserAId == meId && m.UserBId == targetUserId) ||
-            (m.UserAId == targetUserId && m.UserBId == meId));
+            m.UserAId == userAId && m.UserBId == userBId);
 
         if (!matchExists)
         {
-            _db.Matches.Add(new Match { UserAId = meId, UserBId = targetUserId });
+            _db.Matches.Add(new Match
+            {
+                UserAId = userAId,
+                UserBId = userBId
+            });
         }
 
         await _db.SaveChangesAsync();

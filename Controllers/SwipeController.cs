@@ -191,17 +191,21 @@ public class SwipeController : ControllerBase
 
         if (reciprocal)
         {
+            // Spara alltid match i samma ordning för att undvika A/B och B/A-dubbletter
+            var userAId = meId.CompareTo(dto.TargetUserId) < 0 ? meId : dto.TargetUserId;
+            var userBId = meId.CompareTo(dto.TargetUserId) < 0 ? dto.TargetUserId : meId;
+
             var matchExists = await _db.Matches.AnyAsync(m =>
-                (m.UserAId == meId && m.UserBId == dto.TargetUserId) ||
-                (m.UserAId == dto.TargetUserId && m.UserBId == meId));
+                m.UserAId == userAId && m.UserBId == userBId);
 
             if (!matchExists)
             {
                 _db.Matches.Add(new Match
                 {
-                    UserAId = meId,
-                    UserBId = dto.TargetUserId
+                    UserAId = userAId,
+                    UserBId = userBId
                 });
+
                 await _db.SaveChangesAsync();
             }
 

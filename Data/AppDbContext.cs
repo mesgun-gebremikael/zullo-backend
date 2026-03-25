@@ -107,6 +107,22 @@ public class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<Match>(e =>
+        {
+            // En match mellan två användare ska bara kunna finnas en gång
+            e.HasIndex(x => new { x.UserAId, x.UserBId }).IsUnique();
+
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.UserAId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(x => x.UserBId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<Message>(e =>
         {
             e.HasKey(x => x.Id);
