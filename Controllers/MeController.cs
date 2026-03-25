@@ -79,10 +79,10 @@ namespace Zullo.Api.Controllers
 
             await _db.SaveChangesAsync();
 
-            return Ok(new
+            return Ok(new UpsertProfileResponseDto
             {
-                message = "Profile saved",
-                isVisible = profile.IsVisible
+                Message = "Profile saved",
+                IsVisible = profile.IsVisible
             });
         }
 
