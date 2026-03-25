@@ -85,7 +85,11 @@ public class DevController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
-        return Ok(new { message = "Seed done", created = count });
+        return Ok(new SeedResponseDto
+        {
+            Message = "Seed done",
+            Created = count
+        });
     }
 
     // POST /dev/clear-seed
@@ -106,7 +110,11 @@ public class DevController : ControllerBase
         _db.User.RemoveRange(users);
 
         await _db.SaveChangesAsync();
-        return Ok(new { message = "Seed cleared", removedUsers = users.Count });
+        return Ok(new ClearSeedResponseDto
+        {
+            Message = "Seed cleared",
+            RemovedUsers = users.Count
+        });
     }
 
     // GET /dev/stats
@@ -133,11 +141,17 @@ public class DevController : ControllerBase
         var nameId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var email = User.FindFirstValue(ClaimTypes.Email);
 
-        return Ok(new
+        return Ok(new WhoAmIResponseDto
         {
-            nameIdentifier = nameId,
-            email,
-            allClaims = User.Claims.Select(c => new { c.Type, c.Value }).ToList()
+            NameIdentifier = nameId,
+            Email = email,
+            AllClaims = User.Claims
+         .Select(c => new ClaimItemDto
+         {
+             Type = c.Type,
+             Value = c.Value
+         })
+         .ToList()
         });
     }
 }
