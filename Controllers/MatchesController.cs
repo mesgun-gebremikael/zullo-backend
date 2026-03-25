@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
+using Zullo.Api.Dtos;
 
 namespace Zullo.Api.Controllers;
 
@@ -69,7 +70,7 @@ public class MatchesController : ControllerBase
             .ToList();
 
         if (otherIds.Count == 0)
-            return Ok(new List<object>());
+            return Ok(new List<MatchListItemDto>());
 
         // 3) Hämta profiler för de andra användarna (SQL slutar här)
         var profilesRaw = await _db.Profiles.AsNoTracking()
@@ -113,28 +114,28 @@ public class MatchesController : ControllerBase
         {
             lastMap.TryGetValue(p.UserId, out var last);
 
-            return new
+            return new MatchListItemDto
             {
-                userId = p.UserId,
-                displayName = p.DisplayName,
-                age = p.Age,
+                UserId = p.UserId,
+                DisplayName = p.DisplayName,
+                Age = p.Age,
 
-                //  jsonb-safe (ingen Count, ingen [0])
-                photoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",
+                // jsonb-safe: ta första bilden om den finns
+                PhotoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",
 
-                lastMessageText = last?.lastMessageText,
-                lastMessageAtUtc = last?.lastMessageAtUtc,
+                LastMessageText = last?.lastMessageText,
+                LastMessageAtUtc = last?.lastMessageAtUtc,
 
-                matchCreatedAtUtc = matchCreatedMap.TryGetValue(p.UserId, out var mc)
+                // Fallback-sortering om chat ännu inte startat
+                MatchCreatedAtUtc = matchCreatedMap.TryGetValue(p.UserId, out var mc)
                     ? mc
                     : (DateTime?)null,
 
-                hasUnread = last?.hasUnread ?? false
+                HasUnread = last?.hasUnread ?? false
             };
         })
-        // Sortera: unread först, sen senaste message, annars matchCreatedAtUtc
-        .OrderByDescending(x => x.lastMessageAtUtc ?? x.matchCreatedAtUtc ?? DateTime.MinValue)
-         .ToList();
+         .OrderByDescending(x => x.LastMessageAtUtc ?? x.MatchCreatedAtUtc ?? DateTime.MinValue)
+          .ToList();
 
         return Ok(result);
     }
