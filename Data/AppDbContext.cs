@@ -44,6 +44,24 @@ public class AppDbContext : DbContext
             .Property(p => p.PhotoUrls)
             .HasColumnType("jsonb");
 
+        modelBuilder.Entity<Like>(e =>
+        {
+            // Hindrar samma like från att sparas flera gånger
+            e.HasIndex(x => new { x.FromUserId, x.ToUserId }).IsUnique();
+        });
+
+        modelBuilder.Entity<Skip>(e =>
+        {
+            // Hindrar samma skip från att sparas flera gånger
+            e.HasIndex(x => new { x.FromUserId, x.ToUserId }).IsUnique();
+        });
+
+        modelBuilder.Entity<Block>(e =>
+        {
+            // Hindrar samma block från att sparas flera gånger
+            e.HasIndex(x => new { x.FromUserId, x.BlockedUserId }).IsUnique();
+        });
+
         modelBuilder.Entity<Message>(e =>
         {
             e.HasKey(x => x.Id);
