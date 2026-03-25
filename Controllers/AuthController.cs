@@ -31,7 +31,10 @@ namespace Zullo.Api.Controllers
                 string.IsNullOrWhiteSpace(request.Password))
                 return BadRequest("Email and password required.");
 
-            var exists = await _db.User.AnyAsync(x => x.Email == request.Email);
+            // Normalisera email så register/login blir mindre känsligt för case och mellanslag
+            var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
+            var exists = await _db.User.AnyAsync(x => x.Email == normalizedEmail);
             if (exists)
                 return BadRequest("User already exists.");
 
@@ -40,7 +43,7 @@ namespace Zullo.Api.Controllers
 
             var user = new User
             {
-                Email = request.Email,
+                Email = normalizedEmail,
                 IsVerified = true,
                 PasswordHash = hash,
 
@@ -70,10 +73,13 @@ namespace Zullo.Api.Controllers
         public async Task<IActionResult> Login([FromBody] LoginRequestDto request)
         {
             if (string.IsNullOrWhiteSpace(request.Email) ||
-                string.IsNullOrWhiteSpace(request.Password))
+     string.IsNullOrWhiteSpace(request.Password))
                 return BadRequest("Email and password required.");
 
-            var user = await _db.User.FirstOrDefaultAsync(x => x.Email == request.Email);
+            // Samma normalisering som vid register
+            var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
+            var user = await _db.User.FirstOrDefaultAsync(x => x.Email == normalizedEmail);
             if (user == null)
                 return Unauthorized("Invalid email or password.");
 
