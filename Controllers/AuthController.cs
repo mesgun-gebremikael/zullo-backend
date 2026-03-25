@@ -8,6 +8,7 @@ using Zullo.Api.Data;
 using Zullo.Api.Models;
 using Zullo.Api.Dtos;
 
+
 namespace Zullo.Api.Controllers
 {
     [ApiController]
@@ -56,12 +57,12 @@ namespace Zullo.Api.Controllers
             // ✅ (valfritt) direkt token vid register
             var token = GenerateJwt(user);
 
-            return Ok(new
+            return Ok(new AuthResponseDto
             {
-                message = "User created",
-                token,
-                userId = user.Id,
-                email = user.Email
+                Message = "User created",
+                Token = token,
+                UserId = user.Id,
+                Email = user.Email
             });
         }
 
@@ -86,11 +87,11 @@ namespace Zullo.Api.Controllers
 
             var token = GenerateJwt(user);
 
-            return Ok(new
+            return Ok(new AuthResponseDto
             {
-                token,
-                userId = user.Id,
-                email = user.Email
+                Token = token,
+                UserId = user.Id,
+                Email = user.Email
             });
         }
 
