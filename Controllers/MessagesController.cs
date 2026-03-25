@@ -5,6 +5,7 @@ using System.Security.Claims;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
 using Zullo.Api.Dtos;
+using Zullo.Api.Services;
 
 namespace Zullo.Api.Controllers;
 
@@ -20,13 +21,6 @@ public class MessagesController : ControllerBase
         _db = db;
     }
 
-    private Guid GetMeId()
-    {
-        var idStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(idStr) || !Guid.TryParse(idStr, out var meId))
-            throw new Exception("Missing/invalid NameIdentifier claim.");
-        return meId;
-    }
 
     private async Task<bool> IsBlockedAsync(Guid meId, Guid otherUserId)
     {
@@ -39,7 +33,7 @@ public class MessagesController : ControllerBase
     [HttpGet("thread")]
     public async Task<IActionResult> GetThread([FromQuery] Guid otherUserId)
     {
-        var meId = GetMeId();
+        var meId = CurrentUserService.GetUserIdOrThrow(User);
 
         var isBlocked = await IsBlockedAsync(meId, otherUserId);
         if (isBlocked)
@@ -76,7 +70,7 @@ public class MessagesController : ControllerBase
     [HttpPost("send")]
     public async Task<IActionResult> Send([FromBody] SendMessageDto dto)
     {
-        var meId = GetMeId();
+        var meId = CurrentUserService.GetUserIdOrThrow(User);
 
         var isBlocked = await IsBlockedAsync(meId, dto.ToUserId);
         if (isBlocked)
@@ -118,7 +112,7 @@ public class MessagesController : ControllerBase
     [HttpPost("mark-read")]
     public async Task<IActionResult> MarkRead([FromQuery] Guid otherUserId)
     {
-        var meId = GetMeId();
+        var meId = CurrentUserService.GetUserIdOrThrow(User);
 
         var isBlocked = await IsBlockedAsync(meId, otherUserId);
         if (isBlocked)

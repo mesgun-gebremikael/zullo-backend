@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using Zullo.Api.Data;
 using Zullo.Api.Dtos;
+using Zullo.Api.Services;
 
 namespace Zullo.Api.Controllers;
 
@@ -19,20 +20,14 @@ public class LikesController : ControllerBase
         _db = db;
     }
 
-    private Guid GetMeIdOrThrow()
-    {
-        var meIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(meIdStr, out var meId))
-            throw new Exception("Invalid token user id.");
-        return meId;
-    }
+   
 
     // GET /likes/received
     [HttpGet("received")]
     public async Task<IActionResult> GetReceivedLikes()
     {
         Guid meId;
-        try { meId = GetMeIdOrThrow(); }
+        try { meId = CurrentUserService.GetUserIdOrThrow(User); }
         catch { return Unauthorized(); }
 
         // 1️ Hämta userIds som har gillat mig

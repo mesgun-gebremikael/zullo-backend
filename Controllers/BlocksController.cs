@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
 using Zullo.Api.Dtos;
+using Zullo.Api.Services;
 
 namespace Zullo.Api.Controllers;
 
@@ -20,15 +21,7 @@ public class BlocksController : ControllerBase
         _db = db;
     }
 
-    private Guid GetMeIdOrThrow()
-    {
-        var meIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        if (string.IsNullOrWhiteSpace(meIdStr) || !Guid.TryParse(meIdStr, out var meId))
-            throw new UnauthorizedAccessException("Missing user id.");
-
-        return meId;
-    }
+  
 
     
 
@@ -40,7 +33,7 @@ public class BlocksController : ControllerBase
 
         try
         {
-            meId = GetMeIdOrThrow();
+            meId = CurrentUserService.GetUserIdOrThrow(User);
         }
         catch
         {

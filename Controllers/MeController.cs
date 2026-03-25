@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using Zullo.Api.Data;
 using Zullo.Api.Dtos;
 using Zullo.Api.Models;
+using Zullo.Api.Services;
+using Zullo.Api.Services;
 
 namespace Zullo.Api.Controllers
 {
@@ -20,13 +22,7 @@ namespace Zullo.Api.Controllers
             _db = db;
         }
 
-        private Guid GetMeIdOrThrow()
-        {
-            var meIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrWhiteSpace(meIdStr) || !Guid.TryParse(meIdStr, out var meId))
-                throw new UnauthorizedAccessException("Missing/invalid user id in token.");
-            return meId;
-        }
+       
 
         // ===============================
         // POST /me/profile
@@ -36,7 +32,7 @@ namespace Zullo.Api.Controllers
         public async Task<IActionResult> UpsertProfile([FromBody] UpsertProfileDto dto)
         {
             Guid meId;
-            try { meId = GetMeIdOrThrow(); }
+            try { meId = CurrentUserService.GetUserIdOrThrow(User); }
             catch { return Unauthorized(); }
 
             if (dto.Age < 18)
@@ -95,7 +91,7 @@ namespace Zullo.Api.Controllers
         public async Task<IActionResult> GetProfile()
         {
             Guid meId;
-            try { meId = GetMeIdOrThrow(); }
+            try { meId = CurrentUserService.GetUserIdOrThrow(User); }
             catch { return Unauthorized(); }
 
             var profile = await _db.Profiles
@@ -137,7 +133,7 @@ namespace Zullo.Api.Controllers
         public async Task<IActionResult> UpdateRadius([FromBody] UpdateRadiusDto dto)
         {
             Guid meId;
-            try { meId = GetMeIdOrThrow(); }
+            try { meId = CurrentUserService.GetUserIdOrThrow(User); }
             catch { return Unauthorized(); }
 
             if (dto.MatchRadiusKm < 1 || dto.MatchRadiusKm > 200)

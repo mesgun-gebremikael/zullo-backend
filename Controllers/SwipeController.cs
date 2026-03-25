@@ -7,7 +7,7 @@ using Zullo.Api.Data;
 using Zullo.Api.Models;
 using Zullo.Api.Services;
 using Zullo.Api.Dtos;
-using Zullo.Api.Dtos;
+
 
 namespace Zullo.Api.Controllers;
 
@@ -26,12 +26,7 @@ public class SwipeController : ControllerBase
     }
 
     // plockar ut userId från JWT
-    private bool TryGetMeId(out Guid meId)
-    {
-        meId = Guid.Empty;
-        var meIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        return Guid.TryParse(meIdStr, out meId);
-    }
+   
 
     // GET /swipe/feed
     [HttpGet("feed")]
@@ -42,7 +37,7 @@ public class SwipeController : ControllerBase
     {
         take = Math.Clamp(take, 1, 50);
 
-        if (!TryGetMeId(out var meId))
+        if (!CurrentUserService.TryGetUserId(User, out var meId))
             return Unauthorized("Invalid token.");
 
         // Hämta min user (för radie)
@@ -162,7 +157,7 @@ public class SwipeController : ControllerBase
     [HttpPost("like")]
     public async Task<IActionResult> Like([FromBody] SwipeTargetDto dto)
     {
-        if (!TryGetMeId(out var meId))
+        if (!CurrentUserService.TryGetUserId(User, out var meId))
             return Unauthorized("Invalid token.");
 
         // 1) kolla om like redan finns
@@ -219,7 +214,7 @@ public class SwipeController : ControllerBase
     [HttpPost("skip")]
     public async Task<IActionResult> Skip([FromBody] SwipeTargetDto dto)
     {
-        if (!TryGetMeId(out var meId))
+        if (!CurrentUserService.TryGetUserId(User, out var meId))
             return Unauthorized("Invalid token.");
 
         var already = await _db.Skips.AnyAsync(s =>
