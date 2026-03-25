@@ -7,6 +7,7 @@ using Zullo.Api.Data;
 using Zullo.Api.Models;
 using Zullo.Api.Services;
 using Zullo.Api.Dtos;
+using Zullo.Api.Dtos;
 
 namespace Zullo.Api.Controllers;
 
@@ -53,8 +54,15 @@ public class SwipeController : ControllerBase
 
         if (minAge < 18) minAge = 18;
         if (maxAge > 100) maxAge = 100;
+
         if (minAge > maxAge)
-            return Ok(new { radiusKm = myRadiusKm, profiles = new object[0] });
+        {
+            return Ok(new SwipeFeedResponseDto
+            {
+                RadiusKm = myRadiusKm,
+                Profiles = new List<SwipeProfileDto>()
+            });
+        }
 
 
         // var preferredGender = me.PreferredGender; // 
@@ -106,48 +114,46 @@ public class SwipeController : ControllerBase
 
         // Räkna avstånd och filtrera inom radien (C#)
         var result = candidates
-            .Select(p => new
-            {
-                p.UserId,
-                p.DisplayName,
-                p.Age,
-                p.Bio,
-                p.Intention,
-                p.Religion,
-                p.Workout,
-                p.Smoking,
-                p.Pets,
-                p.Interests,
-                p.PhotoUrls,
+     .Select(p => new SwipeProfileDto
+     {
+         UserId = p.UserId,
+         DisplayName = p.DisplayName,
+         Age = p.Age,
+         Bio = p.Bio,
+         Intention = p.Intention,
+         Religion = p.Religion,
+         Workout = p.Workout,
+         Smoking = p.Smoking,
+         Pets = p.Pets,
+         Interests = p.Interests,
+         PhotoUrls = p.PhotoUrls,
 
-                // ✅ jsonb-safe: första bild (utan Count / [0])
-                photoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",
+         // jsonb-safe: första bild utan Count eller index
+         PhotoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",
 
-                p.CountryCode,
-                 distanceKm = Math.Round(GeoService.DistanceKm(myLat, myLng, p.Lat, p.Lng), 1)
-                
-
-            })
-            .Where(x => x.distanceKm <= myRadiusKm)
-            .OrderBy(x => x.distanceKm)
-            .Take(take)
-            .ToList();
+         CountryCode = p.CountryCode,
+         DistanceKm = Math.Round(GeoService.DistanceKm(myLat, myLng, p.Lat, p.Lng), 1)
+     })
+     .Where(x => x.DistanceKm <= myRadiusKm)
+     .OrderBy(x => x.DistanceKm)
+     .Take(take)
+     .ToList();
         var resultCount = result.Count;
         // return Ok(new { radiusKm = myRadiusKm, profiles = result });
         var totalProfilesInDb = await _db.Profiles.CountAsync();
         var visibleprofilesInDb = await _db.Profiles.CountAsync(p => p.IsVisible);
-        return Ok(new
+        return Ok(new SwipeFeedResponseDto
         {
-            radiusKm = myRadiusKm,
-            minAge,
-            maxAge,
-            totalProfilesInDb,
-            visibleprofilesInDb,
-            candidateCount,
-            resultCount,
-            myLat,
-            myLng,
-            profiles = result
+            RadiusKm = myRadiusKm,
+            MinAge = minAge,
+            MaxAge = maxAge,
+            TotalProfilesInDb = totalProfilesInDb,
+            VisibleProfilesInDb = visibleprofilesInDb,
+            CandidateCount = candidateCount,
+            ResultCount = resultCount,
+            MyLat = myLat,
+            MyLng = myLng,
+            Profiles = result
         });
     }
 
