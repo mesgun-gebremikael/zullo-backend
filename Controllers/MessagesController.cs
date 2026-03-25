@@ -15,27 +15,16 @@ namespace Zullo.Api.Controllers;
 public class MessagesController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly UserRelationService _userRelationService;
 
-    public MessagesController(AppDbContext db)
+    public MessagesController(AppDbContext db, UserRelationService userRelationService)
     {
         _db = db;
+        _userRelationService = userRelationService;
     }
 
 
-    private async Task<bool> IsBlockedAsync(Guid meId, Guid otherUserId)
-    {
-        return await _db.Blocks.AnyAsync(b =>
-            (b.FromUserId == meId && b.BlockedUserId == otherUserId) ||
-            (b.FromUserId == otherUserId && b.BlockedUserId == meId));
-    }
-
-    private async Task<bool> IsMatchedAsync(Guid meId, Guid otherUserId)
-    {
-        // Chat är bara tillåten mellan två användare som har matchat
-        return await _db.Matches.AnyAsync(m =>
-            (m.UserAId == meId && m.UserBId == otherUserId) ||
-            (m.UserAId == otherUserId && m.UserBId == meId));
-    }
+   
 
     // GET /messages/thread?otherUserId=GUID
     [HttpGet("thread")]
@@ -43,12 +32,10 @@ public class MessagesController : ControllerBase
     {
         var meId = CurrentUserService.GetUserIdOrThrow(User);
 
-        var isBlocked = await IsBlockedAsync(meId, otherUserId);
-        if (isBlocked)
+        var isBlocked = await _userRelationService.IsBlockedAsync(meId, otherUserId); if (isBlocked)
             return Forbid();
 
-        var isMatched = await IsMatchedAsync(meId, otherUserId);
-        if (!isMatched)
+        var isMatched = await _userRelationService.IsMatchedAsync(meId, otherUserId); if (!isMatched)
             return Forbid();
 
         var msgs = await _db.Messages.AsNoTracking()
@@ -77,14 +64,14 @@ public class MessagesController : ControllerBase
     {
         var meId = CurrentUserService.GetUserIdOrThrow(User);
 
-        var isBlocked = await IsBlockedAsync(meId, dto.ToUserId);
+        var isBlocked = await _userRelationService.IsBlockedAsync(meId, dto.ToUserId);
         if (isBlocked)
             return Forbid();
 
         if (dto.ToUserId == Guid.Empty) return BadRequest("ToUserId is required.");
         if (string.IsNullOrWhiteSpace(dto.Text)) return BadRequest("Text is required.");
 
-        var isMatched = await IsMatchedAsync(meId, dto.ToUserId);
+        var isMatched = await _userRelationService.IsMatchedAsync(meId, dto.ToUserId);
         if (!isMatched)
             return Forbid();
 
@@ -116,11 +103,11 @@ public class MessagesController : ControllerBase
     {
         var meId = CurrentUserService.GetUserIdOrThrow(User);
 
-        var isBlocked = await IsBlockedAsync(meId, otherUserId);
+        var isBlocked = await _userRelationService.IsBlockedAsync(meId, otherUserId);
         if (isBlocked)
             return Forbid();
 
-        var isMatched = await IsMatchedAsync(meId, otherUserId);
+        var isMatched = await _userRelationService.IsMatchedAsync(meId, otherUserId);
         if (!isMatched)
             return Forbid();
 

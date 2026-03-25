@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Zullo.Api.Data;
 using Npgsql;
+using Zullo.Api.Services;
 
 namespace Zullo.Api
 {
@@ -73,6 +74,7 @@ namespace Zullo.Api
                 options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
             builder.Services.AddScoped<Zullo.Api.Services.LikeLimitService>();
+            builder.Services.AddScoped<UserRelationService>();
 
             // ================================
             //  JWT AUTHENTICATION (NYTT)
