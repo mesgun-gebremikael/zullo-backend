@@ -4,6 +4,7 @@ using Zullo.Api.Data;
 using Zullo.Api.Models;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Zullo.Api.Dtos;
 
 namespace Zullo.Api.Controllers;
 
@@ -117,12 +118,12 @@ public class DevController : ControllerBase
         var likes = await _db.Likes.CountAsync();
         var skips = await _db.Skips.CountAsync();
 
-        return Ok(new
+        return Ok(new DevStatsDto
         {
-            profilesTotal,
-            profilesVisible,
-            likes,
-            skips
+            ProfilesTotal = profilesTotal,
+            ProfilesVisible = profilesVisible,
+            Likes = likes,
+            Skips = skips
         });
     }
     [HttpGet("whoami")]
