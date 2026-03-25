@@ -25,8 +25,25 @@ public class SwipeController : ControllerBase
         _likeLimit = likeLimit;
     }
 
-    // plockar ut userId från JWT
-   
+    private async Task<List<Guid>> GetBlockedUserIdsAsync(Guid meId)
+    {
+        // Hämtar alla användare som jag blockat eller som blockat mig
+        return await _db.Blocks.AsNoTracking()
+            .Where(b => b.FromUserId == meId || b.BlockedUserId == meId)
+            .Select(b => b.FromUserId == meId ? b.BlockedUserId : b.FromUserId)
+            .ToListAsync();
+    }
+
+    private async Task<bool> MatchExistsAsync(Guid userAId, Guid userBId)
+    {
+        // Match sparas nu i fast ordning: lägsta Guid först
+        var firstUserId = userAId.CompareTo(userBId) < 0 ? userAId : userBId;
+        var secondUserId = userAId.CompareTo(userBId) < 0 ? userBId : userAId;
+
+        return await _db.Matches.AnyAsync(m =>
+            m.UserAId == firstUserId && m.UserBId == secondUserId);
+    }
+
 
     // GET /swipe/feed
     [HttpGet("feed")]
@@ -83,10 +100,7 @@ public class SwipeController : ControllerBase
             .Select(s => s.ToUserId)
             .ToListAsync();
 
-        var blockedIds = await _db.Blocks.AsNoTracking()
-           .Where(b => b.FromUserId == meId || b.BlockedUserId == meId)
-            .Select(b => b.FromUserId == meId ? b.BlockedUserId : b.FromUserId)
-            .ToListAsync();
+        var blockedIds = await GetBlockedUserIdsAsync(meId);
 
         var excluded = likedIds
           .Concat(skippedIds)
@@ -180,9 +194,8 @@ public class SwipeController : ControllerBase
             await _db.SaveChangesAsync();
         }
 
-        // 4) match om den andra redan har gillat mig
         var reciprocal = await _db.Likes.AnyAsync(l =>
-            l.FromUserId == dto.TargetUserId && l.ToUserId == meId);
+     l.FromUserId == dto.TargetUserId && l.ToUserId == meId);
 
         if (reciprocal)
         {
@@ -190,8 +203,7 @@ public class SwipeController : ControllerBase
             var userAId = meId.CompareTo(dto.TargetUserId) < 0 ? meId : dto.TargetUserId;
             var userBId = meId.CompareTo(dto.TargetUserId) < 0 ? dto.TargetUserId : meId;
 
-            var matchExists = await _db.Matches.AnyAsync(m =>
-                m.UserAId == userAId && m.UserBId == userBId);
+            var matchExists = await MatchExistsAsync(userAId, userBId);
 
             if (!matchExists)
             {
