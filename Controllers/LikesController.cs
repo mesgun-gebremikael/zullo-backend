@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using Zullo.Api.Data;
+using Zullo.Api.Dtos;
 
 namespace Zullo.Api.Controllers;
 
@@ -42,7 +43,7 @@ public class LikesController : ControllerBase
             .ToListAsync();
 
         if (likedMeIds.Count == 0)
-            return Ok(new List<object>());
+            return Ok(new List<ReceivedLikeDto>());
 
         // 2️ Hämta redan matchade userIds (så vi kan filtrera bort dem)
         var matchedIds = await _db.Matches.AsNoTracking()
@@ -56,7 +57,7 @@ public class LikesController : ControllerBase
             .ToList();
 
         if (filteredIds.Count == 0)
-            return Ok(new List<object>());
+            return Ok(new List<ReceivedLikeDto>());
 
         // 4️⃣ Hämta profiler (först till minne)
         var profilesRaw = await _db.Profiles.AsNoTracking()
@@ -64,12 +65,14 @@ public class LikesController : ControllerBase
             .ToListAsync();
 
         // 5️⃣ Bygg svaret i C# (inte i SQL) -> då funkar jsonb alltid
-        var result = profilesRaw.Select(p => new
+        var result = profilesRaw.Select(p => new ReceivedLikeDto
         {
-            userId = p.UserId,
-            displayName = p.DisplayName,
-            age = p.Age,
-            photoUrl = p.PhotoUrls?.FirstOrDefault() ?? ""
+            UserId = p.UserId,
+            DisplayName = p.DisplayName,
+            Age = p.Age,
+
+            // jsonb-safe: ta första bilden om den finns
+            PhotoUrl = p.PhotoUrls?.FirstOrDefault() ?? ""
         }).ToList();
 
         return Ok(result);
