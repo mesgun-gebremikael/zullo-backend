@@ -175,11 +175,11 @@ public class MatchesController : ControllerBase
 
         await _db.SaveChangesAsync();
 
-        return Ok(new
+        return Ok(new ForceMatchResponseDto
         {
-            message = "Force match created",
-            meId,
-            targetUserId
+            Message = "Force match created",
+            MeId = meId,
+            TargetUserId = targetUserId
         });
     }
 }
