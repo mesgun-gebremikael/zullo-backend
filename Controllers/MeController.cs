@@ -148,7 +148,11 @@ namespace Zullo.Api.Controllers
             user.MatchRadiusKm = dto.MatchRadiusKm;
             await _db.SaveChangesAsync();
 
-            return Ok(new { message = "Radius updated", user.MatchRadiusKm });
+            return Ok(new UpdateRadiusResponseDto
+            {
+                Message = "Radius updated",
+                MatchRadiusKm = user.MatchRadiusKm
+            });
         }
     }
 }
