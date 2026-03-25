@@ -205,10 +205,16 @@ public class SwipeController : ControllerBase
                 await _db.SaveChangesAsync();
             }
 
-            return Ok(new { matched = true });
+            return Ok(new LikeResponseDto
+            {
+                Matched = true
+            });
         }
 
-        return Ok(new { matched = false });
+        return Ok(new LikeResponseDto
+        {
+            Matched = false
+        });
     }
 
     // POST /swipe/skip
