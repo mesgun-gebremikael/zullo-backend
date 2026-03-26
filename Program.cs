@@ -56,7 +56,7 @@ namespace Zullo.Api
                 options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
     {
         {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                    new Microsoft.OpenApi.Models.OpenApiSecurityScheme
             {
                 Reference = new Microsoft.OpenApi.Models.OpenApiReference
                 {
@@ -64,7 +64,7 @@ namespace Zullo.Api
                     Id = "Bearer"
                 }
             },
-            new string[] {}
+                     new string[] {}
         }
     });
             });
@@ -81,8 +81,7 @@ namespace Zullo.Api
             // ================================
             var jwtKey = builder.Configuration["Jwt:Key"];
             if (string.IsNullOrWhiteSpace(jwtKey))
-                throw new Exception("Jwt:Key saknas i appsettings.json / appsettings.Development.json");
-
+                throw new InvalidOperationException("Jwt:Key is missing in configuration.");
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(options =>
                 {

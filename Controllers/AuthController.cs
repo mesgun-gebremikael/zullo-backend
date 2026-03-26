@@ -98,13 +98,19 @@ namespace Zullo.Api.Controllers
 
         private string GenerateJwt(User user)
         {
-            var key = Encoding.UTF8.GetBytes(_config["Jwt:Key"]!);
+            // JWT-nyckeln måste finnas, annars kan jag inte skapa säkra tokens
+            var jwtKey = _config["Jwt:Key"];
+
+            if (string.IsNullOrWhiteSpace(jwtKey))
+                throw new InvalidOperationException("Jwt:Key is missing in configuration.");
+
+            var key = Encoding.UTF8.GetBytes(jwtKey);
 
             var claims = new[]
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim(ClaimTypes.Email, user.Email ?? "")
-            };
+                 new Claim(ClaimTypes.Email, user.Email ?? "")
+    };
 
             var creds = new SigningCredentials(
                 new SymmetricSecurityKey(key),
