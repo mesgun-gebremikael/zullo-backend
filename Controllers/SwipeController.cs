@@ -154,7 +154,10 @@ public class SwipeController : ControllerBase
             // 2) bara om det är en ny like -> konsumera like
             var ok = await _likeLimit.TryConsumeLikeAsync(meId);
             if (!ok)
-                return StatusCode(429, new { message = "Like limit reached. Try again later." });
+                return StatusCode(429, new ErrorMessageResponseDto
+                {
+                    Message = "Like limit reached. Try again later."
+                });
 
             // 3) spara like
             _db.Likes.Add(new Like

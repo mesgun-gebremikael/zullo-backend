@@ -36,9 +36,7 @@ public class ReportsController : ControllerBase
 
         if (dto.ReportedUserId == meId)
             return BadRequest("You cannot report yourself.");
-
-        if (string.IsNullOrWhiteSpace(dto.Reason))
-            return BadRequest("reason is required.");
+      
 
         var report = new Report
         {

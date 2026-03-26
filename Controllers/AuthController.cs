@@ -27,16 +27,15 @@ namespace Zullo.Api.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequestDto request)
         {
-            
-
             // Normalisera email så register/login blir mindre känsligt för case och mellanslag
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
+            // Kolla om user redan finns
             var exists = await _db.Users.AnyAsync(x => x.Email == normalizedEmail);
             if (exists)
                 return BadRequest("User already exists.");
 
-            //  HASHA lösenordet
+            // HASHA lösenordet
             var hash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
             var user = new User
@@ -45,7 +44,7 @@ namespace Zullo.Api.Controllers
                 IsVerified = true,
                 PasswordHash = hash,
 
-                // om du har dessa i modellen, sätt rimliga defaults
+                // Rimliga defaults för ny användare
                 CreatedAtUtc = DateTime.UtcNow,
                 LikesRemaining = 50,
                 LikesResetAtUtc = DateTime.UtcNow.AddHours(12),
@@ -55,7 +54,7 @@ namespace Zullo.Api.Controllers
             _db.Users.Add(user);
             await _db.SaveChangesAsync();
 
-            // ✅ (valfritt) direkt token vid register
+            // Skapa token först efter att user finns och är sparad
             var token = GenerateJwt(user);
 
             return Ok(new AuthResponseDto
