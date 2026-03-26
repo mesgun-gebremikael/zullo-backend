@@ -95,6 +95,22 @@ public class MessagesController : ControllerBase
             });
         }
 
+        // Anti-spam: max 1 message per 1 sekund per user
+        var oneSecondAgo = DateTime.UtcNow.AddSeconds(-1);
+
+        var recentMessage = await _db.Messages
+            .Where(m => m.FromUserId == meId)
+            .OrderByDescending(m => m.CreatedAtUtc)
+            .FirstOrDefaultAsync();
+
+        if (recentMessage != null && recentMessage.CreatedAtUtc > oneSecondAgo)
+        {
+            return BadRequest(new ErrorMessageResponseDto
+            {
+                Message = "You're sending messages too fast."
+            });
+        }
+
         var trimmedText = dto.Text.Trim();
 
         var msg = new Message

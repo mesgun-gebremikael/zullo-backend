@@ -165,6 +165,22 @@ public class SwipeController : ControllerBase
             });
         }
 
+        // Anti-spam: max 1 like per 500 ms
+        var halfSecondAgo = DateTime.UtcNow.AddMilliseconds(-500);
+
+        var recentLike = await _db.Likes
+            .Where(l => l.FromUserId == meId)
+            .OrderByDescending(l => l.CreatedAtUtc)
+            .FirstOrDefaultAsync();
+
+        if (recentLike != null && recentLike.CreatedAtUtc > halfSecondAgo)
+        {
+            return BadRequest(new ErrorMessageResponseDto
+            {
+                Message = "You're swiping too fast."
+            });
+        }
+
         // 1) kolla om like redan finns
         var already = await _db.Likes.AnyAsync(l =>
             l.FromUserId == meId && l.ToUserId == dto.TargetUserId);
@@ -230,6 +246,22 @@ public class SwipeController : ControllerBase
             return Unauthorized(new ErrorMessageResponseDto
             {
                 Message = "Invalid token."
+            });
+        }
+
+        // Anti-spam: max 1 skip per 500 ms
+        var halfSecondAgo = DateTime.UtcNow.AddMilliseconds(-500);
+
+        var recentSkip = await _db.Skips
+            .Where(s => s.FromUserId == meId)
+            .OrderByDescending(s => s.CreatedAtUtc)
+            .FirstOrDefaultAsync();
+
+        if (recentSkip != null && recentSkip.CreatedAtUtc > halfSecondAgo)
+        {
+            return BadRequest(new ErrorMessageResponseDto
+            {
+                Message = "You're swiping too fast."
             });
         }
 
