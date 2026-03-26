@@ -1,12 +1,22 @@
-﻿using Zullo.Api.Models;
+﻿using System.ComponentModel.DataAnnotations;
+using Zullo.Api.Models;
 
 namespace Zullo.Api.Dtos;
 
 public class UpsertProfileDto
 {
+    [Required]
+    [MaxLength(100)]
     public string DisplayName { get; set; } = "";
+
+    [Range(18, 100)]
     public int Age { get; set; }
+
+    [Required]
+    [MaxLength(30)]
     public string Gender { get; set; } = "";
+
+    [MaxLength(1000)]
     public string Bio { get; set; } = "";
 
     public IntentionType Intention { get; set; } = IntentionType.Relationship;
@@ -21,6 +31,8 @@ public class UpsertProfileDto
 
     public double Lat { get; set; }
     public double Lng { get; set; }
+
+    [MaxLength(10)]
     public string CountryCode { get; set; } = "";
 }
 
