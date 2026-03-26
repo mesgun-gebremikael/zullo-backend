@@ -24,13 +24,15 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<User>().ToTable("User");
 
         modelBuilder.Entity<User>()
-            .HasIndex(x => x.Email);
+        .HasIndex(x => x.Email)
+        .IsUnique();
 
         modelBuilder.Entity<User>()
             .HasIndex(x => x.PhoneNumber);
 
         modelBuilder.Entity<User>()
-            .HasIndex(x => x.GoogleSubject);
+            .HasIndex(x => x.GoogleSubject)
+            .IsUnique();
 
         modelBuilder.Entity<User>()
      .HasOne(u => u.Profile)
