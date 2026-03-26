@@ -36,13 +36,14 @@ public class ReportsController : ControllerBase
 
         if (dto.ReportedUserId == meId)
             return BadRequest("You cannot report yourself.");
-      
+
+        var trimmedReason = dto.Reason.Trim();
 
         var report = new Report
         {
             FromUserId = meId,
             ReportedUserId = dto.ReportedUserId,
-            Reason = dto.Reason.Trim(),
+            Reason = trimmedReason,
             CreatedAtUtc = DateTime.UtcNow
         };
 

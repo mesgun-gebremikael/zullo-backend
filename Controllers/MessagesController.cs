@@ -95,11 +95,13 @@ public class MessagesController : ControllerBase
             });
         }
 
+        var trimmedText = dto.Text.Trim();
+
         var msg = new Message
         {
             FromUserId = meId,
             ToUserId = dto.ToUserId,
-            Text = dto.Text.Trim(),
+            Text = trimmedText,
             CreatedAtUtc = DateTime.UtcNow
         };
 

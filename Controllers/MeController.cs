@@ -24,11 +24,17 @@ namespace Zullo.Api.Controllers
 
         private static void MapUpsertProfileDtoToProfile(UpsertProfileDto dto, Profile profile)
         {
+            // Trimma textfält så vi inte sparar onödiga mellanslag i databasen
+            var trimmedDisplayName = dto.DisplayName.Trim();
+            var trimmedGender = dto.Gender.Trim();
+            var trimmedBio = dto.Bio.Trim();
+            var trimmedCountryCode = dto.CountryCode.Trim();
+
             // Grundfält för profil
-            profile.DisplayName = dto.DisplayName;
+            profile.DisplayName = trimmedDisplayName;
             profile.Age = dto.Age;
-            profile.Gender = dto.Gender;
-            profile.Bio = dto.Bio;
+            profile.Gender = trimmedGender;
+            profile.Bio = trimmedBio;
 
             // Dating-preferenser / livsstil
             profile.Intention = dto.Intention;
@@ -37,14 +43,21 @@ namespace Zullo.Api.Controllers
             profile.Smoking = dto.Smoking;
             profile.Pets = dto.Pets;
 
-            // Listor från frontend
-            profile.Interests = dto.Interests ?? new();
-            profile.PhotoUrls = dto.PhotoUrls ?? new();
+            // Trimma listor och ta bort tomma värden
+            profile.Interests = (dto.Interests ?? new())
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
+            profile.PhotoUrls = (dto.PhotoUrls ?? new())
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
 
             // Position / land
             profile.Lat = dto.Lat;
             profile.Lng = dto.Lng;
-            profile.CountryCode = dto.CountryCode;
+            profile.CountryCode = trimmedCountryCode;
 
             // Synlig först när minst 2 bilder finns
             profile.IsVisible = profile.PhotoUrls.Count >= 2;
