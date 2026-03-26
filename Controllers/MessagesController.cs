@@ -68,7 +68,7 @@ public class MessagesController : ControllerBase
         if (isBlocked)
             return Forbid();
 
-        if (dto.ToUserId == Guid.Empty) return BadRequest("ToUserId is required.");
+       
         if (string.IsNullOrWhiteSpace(dto.Text)) return BadRequest("Text is required.");
 
         var isMatched = await _userRelationService.IsMatchedAsync(meId, dto.ToUserId);

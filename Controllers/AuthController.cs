@@ -27,9 +27,7 @@ namespace Zullo.Api.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequestDto request)
         {
-            if (string.IsNullOrWhiteSpace(request.Email) ||
-                string.IsNullOrWhiteSpace(request.Password))
-                return BadRequest("Email and password required.");
+            
 
             // Normalisera email så register/login blir mindre känsligt för case och mellanslag
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
@@ -72,9 +70,7 @@ namespace Zullo.Api.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequestDto request)
         {
-            if (string.IsNullOrWhiteSpace(request.Email) ||
-     string.IsNullOrWhiteSpace(request.Password))
-                return BadRequest("Email and password required.");
+          
 
             // Samma normalisering som vid register
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
@@ -83,7 +79,7 @@ namespace Zullo.Api.Controllers
             if (user == null)
                 return Unauthorized("Invalid email or password.");
 
-            // ✅ skydd mot gamla null-rader
+            //  skydd mot gamla null-rader
             if (string.IsNullOrWhiteSpace(user.PasswordHash))
                 return Unauthorized("User has no password set. Re-register this user.");
 

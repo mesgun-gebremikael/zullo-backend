@@ -58,8 +58,7 @@ namespace Zullo.Api.Controllers
             try { meId = CurrentUserService.GetUserIdOrThrow(User); }
             catch { return Unauthorized(); }
 
-            if (dto.Age < 18)
-                return BadRequest("Age must be 18+.");
+            
 
             // Säkerställ att User finns (nu: riktiga userId från JWT)
             var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == meId);
@@ -139,8 +138,7 @@ namespace Zullo.Api.Controllers
             try { meId = CurrentUserService.GetUserIdOrThrow(User); }
             catch { return Unauthorized(); }
 
-            if (dto.MatchRadiusKm < 1 || dto.MatchRadiusKm > 200)
-                return BadRequest("MatchRadiusKm must be between 1 and 200.");
+            
 
             var user = await _db.Users.FindAsync(meId);
             if (user == null) return NotFound("User not found.");
