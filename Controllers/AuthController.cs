@@ -30,8 +30,9 @@ namespace Zullo.Api.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequestDto request)
         {
-            // Normalisera email så register/login blir mindre känsligt för case och mellanslag
+            // Normalisera email för konsekvent register/login och unikhetkontroll
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+            var password = request.Password;
 
             // Kolla om user redan finns
             var exists = await _db.Users.AnyAsync(x => x.Email == normalizedEmail);
@@ -45,7 +46,7 @@ namespace Zullo.Api.Controllers
             }
 
             // HASHA lösenordet
-            var hash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+            var hash = BCrypt.Net.BCrypt.HashPassword(password);
 
             var user = new User
             {
@@ -80,8 +81,10 @@ namespace Zullo.Api.Controllers
         {
           
 
-            // Samma normalisering som vid register
+            // Samma normalisering och email som vid register
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
+            var password = request.Password;
 
             var tooFast = await _loginAttemptService.IsTryingTooFastAsync(normalizedEmail);
             if (tooFast)
@@ -110,7 +113,7 @@ namespace Zullo.Api.Controllers
                 });
             }
 
-            var ok = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
+            var ok = BCrypt.Net.BCrypt.Verify(password, user.PasswordHash);
             if (!ok)
             {
                 return Unauthorized(new ErrorMessageResponseDto
