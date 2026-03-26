@@ -67,6 +67,7 @@ namespace Zullo.Api.Controllers
             // Skapa token först efter att user finns och är sparad
             var token = GenerateJwt(user);
 
+            // Register returnerar token direkt så frontend kan logga in utan extra steg
             return Ok(new AuthResponseDto
             {
                 Message = "User created",
@@ -124,6 +125,7 @@ namespace Zullo.Api.Controllers
 
             var token = GenerateJwt(user);
 
+            // Login returnerar samma auth-shape som register, men utan message-fält
             return Ok(new AuthResponseDto
             {
                 Token = token,
