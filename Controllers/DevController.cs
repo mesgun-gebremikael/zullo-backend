@@ -16,16 +16,31 @@ namespace Zullo.Api.Controllers;
 public class DevController : ControllerBase
 {
     private readonly AppDbContext _db;
-
-    public DevController(AppDbContext db)
+    private readonly IWebHostEnvironment _env;
+    public DevController(AppDbContext db, IWebHostEnvironment env)
     {
         _db = db;
+        _env = env;
+    }
+
+    // Gör att dev-endpoints bara kan användas lokalt i Development-miljö
+    private IActionResult? EnsureDevelopmentOnly()
+    {
+        // Dev-endpoints ska inte gå att använda utanför Development
+        if (!_env.IsDevelopment())
+        {
+            return NotFound();
+        }
+
+        return null;
     }
 
     // POST /dev/seed?count=20
     [HttpPost("seed")]
     public async Task<IActionResult> Seed([FromQuery] int count = 20)
     {
+        var devOnly = EnsureDevelopmentOnly();
+        if (devOnly != null) return devOnly;
         count = Math.Clamp(count, 1, 200);
 
         // ✅ Ta en befintlig profil som "center" (slipp hårdkodad userId)
@@ -99,6 +114,9 @@ public class DevController : ControllerBase
     [HttpPost("clear-seed")]
     public async Task<IActionResult> ClearSeed()
     {
+        var devOnly = EnsureDevelopmentOnly();
+        if (devOnly != null) return devOnly;
+
         var users = await _db.Users
             .Where(u => u.Email != null && u.Email.EndsWith("@zullo.local"))
             .ToListAsync();
@@ -165,6 +183,9 @@ public class DevController : ControllerBase
     [HttpGet("stats")]
     public async Task<IActionResult> Stats()
     {
+        var devOnly = EnsureDevelopmentOnly();
+        if (devOnly != null) return devOnly;
+
         var profilesTotal = await _db.Profiles.CountAsync();
         var profilesVisible = await _db.Profiles.CountAsync(p => p.IsVisible);
         var likes = await _db.Likes.CountAsync();
@@ -182,6 +203,8 @@ public class DevController : ControllerBase
     [Authorize]
     public IActionResult WhoAmI()
     {
+        var devOnly = EnsureDevelopmentOnly();
+        if (devOnly != null) return devOnly;
         var nameId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var email = User.FindFirstValue(ClaimTypes.Email);
 

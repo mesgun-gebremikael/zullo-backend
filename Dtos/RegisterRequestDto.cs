@@ -8,9 +8,8 @@ public class RegisterRequestDto
     [EmailAddress]
     [MaxLength(200)]
     public string Email { get; set; } = "";
-
     [Required]
-    [MinLength(6)]
+    [MinLength(8)]
     [MaxLength(100)]
     public string Password { get; set; } = "";
 }
