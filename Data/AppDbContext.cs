@@ -35,10 +35,42 @@ public class AppDbContext : DbContext
             .IsUnique();
 
         modelBuilder.Entity<User>()
+    .Property(x => x.Email)
+    .HasMaxLength(200);
+
+        modelBuilder.Entity<User>()
+            .Property(x => x.PhoneNumber)
+            .HasMaxLength(50);
+
+        modelBuilder.Entity<User>()
+            .Property(x => x.PasswordHash)
+            .HasMaxLength(255);
+
+        modelBuilder.Entity<User>()
+            .Property(x => x.GoogleSubject)
+            .HasMaxLength(255);
+
+        modelBuilder.Entity<User>()
      .HasOne(u => u.Profile)
      .WithOne(p => p.User)
      .HasForeignKey<Profile>(p => p.UserId)
      .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Profile>()
+    .Property(p => p.DisplayName)
+    .HasMaxLength(100);
+
+        modelBuilder.Entity<Profile>()
+            .Property(p => p.Gender)
+            .HasMaxLength(30);
+
+        modelBuilder.Entity<Profile>()
+            .Property(p => p.Bio)
+            .HasMaxLength(1000);
+
+        modelBuilder.Entity<Profile>()
+            .Property(p => p.CountryCode)
+            .HasMaxLength(10);
 
         // Store lists as JSON in Postgres (simple for v1)
         modelBuilder.Entity<Profile>()
@@ -100,6 +132,9 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<Report>(e =>
         {
+            e.Property(x => x.Reason)
+              .HasMaxLength(1000);
+
             e.HasOne<User>()
                 .WithMany()
                 .HasForeignKey(x => x.FromUserId)
