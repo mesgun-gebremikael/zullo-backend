@@ -38,12 +38,22 @@ public class SwipeController : ControllerBase
         take = Math.Clamp(take, 1, 50);
 
         if (!CurrentUserService.TryGetUserId(User, out var meId))
-            return Unauthorized("Invalid token.");
+        {
+            return Unauthorized(new ErrorMessageResponseDto
+            {
+                Message = "Invalid token."
+            });
+        }
 
         // Hämta min user (för radie)
         var me = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == meId);
         if (me == null)
-            return Unauthorized("User not found.");
+        {
+            return Unauthorized(new ErrorMessageResponseDto
+            {
+                Message = "User not found."
+            });
+        }
 
         var myRadiusKm = me.MatchRadiusKm;
 
@@ -67,7 +77,12 @@ public class SwipeController : ControllerBase
             .FirstOrDefaultAsync(p => p.UserId == meId);
 
         if (myProfile == null)
-            return BadRequest("Create your profile first (POST /me/profile).");
+        {
+            return BadRequest(new ErrorMessageResponseDto
+            {
+                Message = "Create your profile first (POST /me/profile)."
+            });
+        }
 
         var myLat = myProfile.Lat;
         var myLng = myProfile.Lng;
@@ -143,7 +158,12 @@ public class SwipeController : ControllerBase
     public async Task<IActionResult> Like([FromBody] SwipeTargetDto dto)
     {
         if (!CurrentUserService.TryGetUserId(User, out var meId))
-            return Unauthorized("Invalid token.");
+        {
+            return Unauthorized(new ErrorMessageResponseDto
+            {
+                Message = "Invalid token."
+            });
+        }
 
         // 1) kolla om like redan finns
         var already = await _db.Likes.AnyAsync(l =>
@@ -206,7 +226,12 @@ public class SwipeController : ControllerBase
     public async Task<IActionResult> Skip([FromBody] SwipeTargetDto dto)
     {
         if (!CurrentUserService.TryGetUserId(User, out var meId))
-            return Unauthorized("Invalid token.");
+        {
+            return Unauthorized(new ErrorMessageResponseDto
+            {
+                Message = "Invalid token."
+            });
+        }
 
         var already = await _db.Skips.AnyAsync(s =>
             s.FromUserId == meId && s.ToUserId == dto.TargetUserId);

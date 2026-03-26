@@ -56,14 +56,25 @@ namespace Zullo.Api.Controllers
         {
             Guid meId;
             try { meId = CurrentUserService.GetUserIdOrThrow(User); }
-            catch { return Unauthorized(); }
+            catch
+            {
+                return Unauthorized(new ErrorMessageResponseDto
+                {
+                    Message = "Invalid token."
+                });
+            }
 
-            
+
 
             // Säkerställ att User finns (nu: riktiga userId från JWT)
             var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == meId);
             if (user == null)
-                return NotFound("User not found. Register first.");
+            {
+                return NotFound(new ErrorMessageResponseDto
+                {
+                    Message = "User not found. Register first."
+                });
+            }
 
             // Hämta eller skapa profil
             var profile = await _db.Profiles.FirstOrDefaultAsync(p => p.UserId == meId);
@@ -94,7 +105,13 @@ namespace Zullo.Api.Controllers
         {
             Guid meId;
             try { meId = CurrentUserService.GetUserIdOrThrow(User); }
-            catch { return Unauthorized(); }
+            catch
+            {
+                return Unauthorized(new ErrorMessageResponseDto
+                {
+                    Message = "Invalid token."
+                });
+            }
 
             var profile = await _db.Profiles
     .AsNoTracking()
@@ -122,26 +139,43 @@ namespace Zullo.Api.Controllers
     .FirstOrDefaultAsync();
 
             if (profile == null)
-                return NotFound("No profile yet.");
+            {
+                return NotFound(new ErrorMessageResponseDto
+                {
+                    Message = "No profile yet."
+                });
+            }
 
             return Ok(profile);
         }
 
-        // ===============================
+        
         // POST /me/radius
         // Uppdatera match-radius på min user
-        // ===============================
+
         [HttpPost("radius")]
         public async Task<IActionResult> UpdateRadius([FromBody] UpdateRadiusDto dto)
         {
             Guid meId;
             try { meId = CurrentUserService.GetUserIdOrThrow(User); }
-            catch { return Unauthorized(); }
+            catch
+            {
+                return Unauthorized(new ErrorMessageResponseDto
+                {
+                    Message = "Invalid token."
+                });
+            }
 
-            
+
 
             var user = await _db.Users.FindAsync(meId);
-            if (user == null) return NotFound("User not found.");
+            if (user == null)
+            {
+                return NotFound(new ErrorMessageResponseDto
+                {
+                    Message = "User not found."
+                });
+            }
 
             user.MatchRadiusKm = dto.MatchRadiusKm;
             await _db.SaveChangesAsync();

@@ -32,11 +32,23 @@ public class MessagesController : ControllerBase
     {
         var meId = CurrentUserService.GetUserIdOrThrow(User);
 
-        var isBlocked = await _userRelationService.IsBlockedAsync(meId, otherUserId); if (isBlocked)
-            return Forbid();
+        var isBlocked = await _userRelationService.IsBlockedAsync(meId, otherUserId);
+        if (isBlocked)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ErrorMessageResponseDto
+            {
+                Message = "You cannot access this conversation."
+            });
+        }
 
-        var isMatched = await _userRelationService.IsMatchedAsync(meId, otherUserId); if (!isMatched)
-            return Forbid();
+        var isMatched = await _userRelationService.IsMatchedAsync(meId, otherUserId);
+        if (!isMatched)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ErrorMessageResponseDto
+            {
+                Message = "You can only view messages with matched users."
+            });
+        }
 
         var msgs = await _db.Messages.AsNoTracking()
             .Where(m =>
@@ -66,12 +78,22 @@ public class MessagesController : ControllerBase
 
         var isBlocked = await _userRelationService.IsBlockedAsync(meId, dto.ToUserId);
         if (isBlocked)
-            return Forbid();
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ErrorMessageResponseDto
+            {
+                Message = "You cannot send messages in this conversation."
+            });
+        }
 
 
         var isMatched = await _userRelationService.IsMatchedAsync(meId, dto.ToUserId);
         if (!isMatched)
-            return Forbid();
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ErrorMessageResponseDto
+            {
+                Message = "You can only send messages to matched users."
+            });
+        }
 
         var msg = new Message
         {
@@ -103,11 +125,21 @@ public class MessagesController : ControllerBase
 
         var isBlocked = await _userRelationService.IsBlockedAsync(meId, otherUserId);
         if (isBlocked)
-            return Forbid();
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ErrorMessageResponseDto
+            {
+                Message = "You cannot access this conversation."
+            });
+        }
 
         var isMatched = await _userRelationService.IsMatchedAsync(meId, otherUserId);
         if (!isMatched)
-            return Forbid();
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ErrorMessageResponseDto
+            {
+                Message = "You can only mark messages as read for matched users."
+            });
+        }
 
         var toMark = await _db.Messages
             .Where(m => m.FromUserId == otherUserId
