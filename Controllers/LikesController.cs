@@ -30,8 +30,13 @@ public class LikesController : ControllerBase
     {
         Guid meId;
         try { meId = CurrentUserService.GetUserIdOrThrow(User); }
-        catch { return Unauthorized(); }
-
+        catch
+        {
+            return Unauthorized(new ErrorMessageResponseDto
+            {
+                Message = "Invalid token."
+            });
+        }
         // 1️ Hämta userIds som har gillat mig
         var likedMeIds = await _db.Likes.AsNoTracking()
             .Where(l => l.ToUserId == meId)

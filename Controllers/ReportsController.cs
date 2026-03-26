@@ -29,13 +29,29 @@ public class ReportsController : ControllerBase
     {
         Guid meId;
         try { meId = CurrentUserService.GetUserIdOrThrow(User); }
-        catch { return Unauthorized(); }
+        catch
+        {
+            return Unauthorized(new ErrorMessageResponseDto
+            {
+                Message = "Invalid token."
+            });
+        }
 
         if (dto.ReportedUserId == Guid.Empty)
-            return BadRequest("reportedUserId is required.");
+        {
+            return BadRequest(new ErrorMessageResponseDto
+            {
+                Message = "reportedUserId is required."
+            });
+        }
 
         if (dto.ReportedUserId == meId)
-            return BadRequest("You cannot report yourself.");
+        {
+            return BadRequest(new ErrorMessageResponseDto
+            {
+                Message = "You cannot report yourself."
+            });
+        }
 
         var trimmedReason = dto.Reason.Trim();
 

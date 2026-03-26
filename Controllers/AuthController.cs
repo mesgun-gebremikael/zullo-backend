@@ -35,8 +35,14 @@ namespace Zullo.Api.Controllers
 
             // Kolla om user redan finns
             var exists = await _db.Users.AnyAsync(x => x.Email == normalizedEmail);
+
             if (exists)
-                return BadRequest("User already exists.");
+            {
+                return BadRequest(new ErrorMessageResponseDto
+                {
+                    Message = "User already exists."
+                });
+            }
 
             // HASHA lösenordet
             var hash = BCrypt.Net.BCrypt.HashPassword(request.Password);
@@ -88,15 +94,30 @@ namespace Zullo.Api.Controllers
 
             var user = await _db.Users.FirstOrDefaultAsync(x => x.Email == normalizedEmail);
             if (user == null)
-                return Unauthorized("Invalid email or password.");
+            {
+                return Unauthorized(new ErrorMessageResponseDto
+                {
+                    Message = "Invalid email or password."
+                });
+            }
 
             //  skydd mot gamla null-rader
             if (string.IsNullOrWhiteSpace(user.PasswordHash))
-                return Unauthorized("User has no password set. Re-register this user.");
+            {
+                return Unauthorized(new ErrorMessageResponseDto
+                {
+                    Message = "User has no password set. Re-register this user."
+                });
+            }
 
             var ok = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
             if (!ok)
-                return Unauthorized("Invalid email or password.");
+            {
+                return Unauthorized(new ErrorMessageResponseDto
+                {
+                    Message = "Invalid email or password."
+                });
+            }
 
             var token = GenerateJwt(user);
 

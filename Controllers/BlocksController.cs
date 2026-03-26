@@ -37,14 +37,27 @@ public class BlocksController : ControllerBase
         }
         catch
         {
-            return Unauthorized();
+            return Unauthorized(new ErrorMessageResponseDto
+            {
+                Message = "Invalid token."
+            });
         }
 
         if (dto.BlockedUserId == Guid.Empty)
-            return BadRequest("blockedUserId required");
+        {
+            return BadRequest(new ErrorMessageResponseDto
+            {
+                Message = "blockedUserId required"
+            });
+        }
 
         if (dto.BlockedUserId == meId)
-            return BadRequest("Cannot block yourself");
+        {
+            return BadRequest(new ErrorMessageResponseDto
+            {
+                Message = "Cannot block yourself"
+            });
+        }
 
         var alreadyBlocked = await _db.Blocks
             .AnyAsync(x => x.FromUserId == meId && x.BlockedUserId == dto.BlockedUserId);

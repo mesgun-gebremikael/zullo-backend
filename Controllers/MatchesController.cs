@@ -32,7 +32,13 @@ public class MatchesController : ControllerBase
     {
         Guid meId;
         try { meId = CurrentUserService.GetUserIdOrThrow(User); }
-        catch { return Unauthorized(); }
+        catch
+        {
+            return Unauthorized(new ErrorMessageResponseDto
+            {
+                Message = "Invalid token."
+            });
+        }
 
         // 1) Hämta mina matches
         var myMatches = await _db.Matches.AsNoTracking()
@@ -141,11 +147,28 @@ public class MatchesController : ControllerBase
     {
         Guid meId;
         try { meId = CurrentUserService.GetUserIdOrThrow(User); }
-        catch { return Unauthorized(); }
+        catch
+        {
+            return Unauthorized(new ErrorMessageResponseDto
+            {
+                Message = "Invalid token."
+            });
+        }
 
-        if (targetUserId == Guid.Empty) return BadRequest("targetUserId is required.");
-        if (targetUserId == meId) return BadRequest("Cannot match with yourself.");
-
+        if (targetUserId == Guid.Empty)
+        {
+            return BadRequest(new ErrorMessageResponseDto
+            {
+                Message = "targetUserId is required."
+            });
+        }
+        if (targetUserId == meId)
+        {
+            return BadRequest(new ErrorMessageResponseDto
+            {
+                Message = "Cannot match with yourself."
+            });
+        }
         // Skapa Like (target -> me) om den inte finns (bara för test)
         var likeExists = await _db.Likes.AnyAsync(l =>
             l.FromUserId == targetUserId && l.ToUserId == meId);
