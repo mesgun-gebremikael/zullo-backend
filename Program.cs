@@ -102,6 +102,33 @@ namespace Zullo.Api
 
             var app = builder.Build();
 
+            app.UseExceptionHandler(errorApp =>
+            {
+                errorApp.Run(async context =>
+                {
+                    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                    context.Response.ContentType = "application/json";
+
+                    var exceptionFeature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+                    var exception = exceptionFeature?.Error;
+
+                    var env = app.Environment;
+
+                    var response = new Zullo.Api.Dtos.ApiErrorResponseDto
+                    {
+                        Message = "Something went wrong."
+                    };
+
+                    // Visa detalj bara i development så du kan felsöka lokalt
+                    if (env.IsDevelopment() && exception != null)
+                    {
+                        response.Detail = exception.Message;
+                    }
+
+                    await context.Response.WriteAsJsonAsync(response);
+                });
+            });
+
             app.UseCors("AllowFlutterWeb");
 
             if (app.Environment.IsDevelopment())
