@@ -145,6 +145,27 @@ namespace Zullo.Api
                 }
             });
 
+            app.Use(async (context, next) =>
+            {
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                await next();
+
+                stopwatch.Stop();
+
+                var method = context.Request.Method;
+                var path = context.Request.Path;
+                var statusCode = context.Response.StatusCode;
+                var elapsedMs = stopwatch.ElapsedMilliseconds;
+
+                app.Logger.LogInformation(
+                    "HTTP {Method} {Path} responded {StatusCode} in {ElapsedMs} ms",
+                    method,
+                    path,
+                    statusCode,
+                    elapsedMs);
+            });
+
             app.UseCors("AllowFlutterWeb");
 
             if (app.Environment.IsDevelopment())
