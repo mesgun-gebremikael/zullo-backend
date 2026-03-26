@@ -7,6 +7,7 @@ using System.Text;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
 using Zullo.Api.Dtos;
+using Zullo.Api.Services;
 
 
 namespace Zullo.Api.Controllers
@@ -17,11 +18,13 @@ namespace Zullo.Api.Controllers
     {
         private readonly AppDbContext _db;
         private readonly IConfiguration _config;
+        private readonly LoginAttemptService _loginAttemptService;
 
-        public AuthController(AppDbContext db, IConfiguration config)
+        public AuthController(AppDbContext db, IConfiguration config, LoginAttemptService loginAttemptService)
         {
             _db = db;
             _config = config;
+            _loginAttemptService = loginAttemptService;
         }
 
         [HttpPost("register")]
@@ -73,6 +76,15 @@ namespace Zullo.Api.Controllers
 
             // Samma normalisering som vid register
             var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
+            var tooFast = await _loginAttemptService.IsTryingTooFastAsync(normalizedEmail);
+            if (tooFast)
+            {
+                return BadRequest(new ErrorMessageResponseDto
+                {
+                    Message = "Too many login attempts. Please wait a moment."
+                });
+            }
 
             var user = await _db.Users.FirstOrDefaultAsync(x => x.Email == normalizedEmail);
             if (user == null)
