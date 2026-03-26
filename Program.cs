@@ -128,6 +128,22 @@ namespace Zullo.Api
                 });
             });
 
+            app.UseStatusCodePages(async context =>
+            {
+                var response = context.HttpContext.Response;
+
+                // Returnera enkel JSON även för tomma 401/403/404-svar
+                if (string.IsNullOrWhiteSpace(response.ContentType))
+                {
+                    response.ContentType = "application/json";
+
+                    await response.WriteAsJsonAsync(new Zullo.Api.Dtos.ApiErrorResponseDto
+                    {
+                        Message = $"Request failed with status code {response.StatusCode}."
+                    });
+                }
+            });
+
             app.UseCors("AllowFlutterWeb");
 
             if (app.Environment.IsDevelopment())
