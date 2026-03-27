@@ -116,31 +116,42 @@ public class SwipeController : ControllerBase
               .Take(200)
          .ToListAsync();
 
-        
+
 
         // Räkna avstånd och filtrera inom radien (C#)
         var result = candidates
      .Select(p => new SwipeProfileDto
      {
          UserId = p.UserId,
-         DisplayName = p.DisplayName,
+
+         // skyddar mot null och konstiga värden
+         DisplayName = (p.DisplayName ?? "").Trim(),
          Age = p.Age,
-         Bio = p.Bio,
+         Bio = (p.Bio ?? "").Trim(),
+
          Intention = p.Intention,
          Religion = p.Religion,
          Workout = p.Workout,
          Smoking = p.Smoking,
          Pets = p.Pets,
-         Interests = p.Interests,
-         PhotoUrls = p.PhotoUrls,
 
-         // jsonb-safe: första bild utan Count eller index
+         // säkerställ att listor aldrig är null
+         Interests = p.Interests ?? new List<string>(),
+         PhotoUrls = p.PhotoUrls ?? new List<string>(),
+
+         // första bild om den finns
          PhotoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",
 
-         CountryCode = p.CountryCode,
-         DistanceKm = Math.Round(GeoService.DistanceKm(myLat, myLng, p.Lat, p.Lng), 1)
+         CountryCode = (p.CountryCode ?? "").Trim(),
+
+         DistanceKm = Math.Round(
+             GeoService.DistanceKm(myLat, myLng, p.Lat, p.Lng),
+             1
+         )
      })
-     .Where(x => x.DistanceKm <= myRadiusKm)
+        // visa bara profiler som har minst 1 bild
+       .Where(x => x.PhotoUrls.Count > 0)
+      .Where(x => x.DistanceKm <= myRadiusKm)
      .OrderBy(x => x.DistanceKm)
      .Take(take)
      .ToList();
