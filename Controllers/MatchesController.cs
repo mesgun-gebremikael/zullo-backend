@@ -141,8 +141,9 @@ public class MatchesController : ControllerBase
         return Ok(result);
     }
 
-    // POST /matches/force-match?targetUserId=<GUID>
     // För test: skapar Like + Match om det saknas
+
+    //Dev/test-endpoint. ska iinte användas av vanliga apptrafik i riktig launch.
     [HttpPost("force-match")]
     public async Task<IActionResult> ForceMatch([FromQuery] Guid targetUserId)
     {

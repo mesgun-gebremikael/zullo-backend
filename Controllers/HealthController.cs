@@ -14,6 +14,7 @@ public class HealthController : ControllerBase
         _env = env;
     }
 
+    //Enkel health endpoint för att snabbt se att API:t lever
     [HttpGet]
     public IActionResult Get()
     {

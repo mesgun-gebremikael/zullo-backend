@@ -12,7 +12,8 @@ namespace Zullo.Api.Controllers;
 [Route("dev")]
 [Authorize] // Dev-endpoints ska inte ligga öppna utan token
 
-// Endpoints för lokal utveckling och test. Skyddas nu med JWT.
+// Endpoints för lokal utveckling och test. 
+//Skyddas med JWT och tillåtna bara i Development-miljö
 public class DevController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -23,7 +24,7 @@ public class DevController : ControllerBase
         _env = env;
     }
 
-    // Gör att dev-endpoints bara kan användas lokalt i Development-miljö
+    // stoppar dev-endpoint från ett används utanför Development
     private IActionResult? EnsureDevelopmentOnly()
     {
         // Dev-endpoints ska inte gå att använda utanför Development
