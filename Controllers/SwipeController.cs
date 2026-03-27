@@ -107,14 +107,16 @@ public class SwipeController : ControllerBase
 
         // Hämta kandidater (SQL slutar här)
         var candidates = await _db.Profiles.AsNoTracking()
-          .Where(p => p.IsVisible)
-           .Where(p => !excluded.Contains(p.UserId))
+     // Endast profiler som är markerade synliga
+     .Where(p => p.IsVisible)
 
-          // 🎯 FILTER
-            .Where(p => p.Age >= minAge && p.Age <= maxAge)
+     // Extra säkerhet: feeden ska bara visa profiler med minst 2 bilder
+     .Where(p => p.PhotoUrls != null && p.PhotoUrls.Count >= 2)
 
-              .Take(200)
-         .ToListAsync();
+     .Where(p => !excluded.Contains(p.UserId))
+     .Where(p => p.Age >= minAge && p.Age <= maxAge)
+     .Take(200)
+     .ToListAsync();
 
 
 

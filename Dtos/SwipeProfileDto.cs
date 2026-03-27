@@ -20,6 +20,8 @@ public class SwipeProfileDto
 
     // Intressen och alla bilder behövs i swipe-kortet
     public List<string> Interests { get; set; } = new();
+
+    //Feed ska i praktiken visa profiler som har minst 2 bilder
     public List<string> PhotoUrls { get; set; } = new();
 
     // Första bild om frontend vill använda en snabb preview

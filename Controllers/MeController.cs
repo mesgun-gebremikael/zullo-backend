@@ -102,6 +102,7 @@ namespace Zullo.Api.Controllers
 
             await _db.SaveChangesAsync();
 
+            //frontend kräver minst 2 bilder för att användare ska kunna gå vidare 
             return Ok(new UpsertProfileResponseDto
             {
                 Message = "Profile saved",
