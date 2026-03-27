@@ -134,7 +134,8 @@ public class MatchesController : ControllerBase
                 HasUnread = last?.hasUnread ?? false
             };
         })
-         .OrderByDescending(x => x.LastMessageAtUtc ?? x.MatchCreatedAtUtc ?? DateTime.MinValue)
+        .OrderByDescending(x => x.HasUnread)
+        .ThenByDescending(x => x.LastMessageAtUtc ?? x.MatchCreatedAtUtc ?? DateTime.MinValue)
           .ToList();
 
         return Ok(result);
