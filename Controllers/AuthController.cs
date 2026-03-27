@@ -37,6 +37,7 @@ namespace Zullo.Api.Controllers
             // Kolla om user redan finns
             var exists = await _db.Users.AnyAsync(x => x.Email == normalizedEmail);
 
+            //Skydda mot dubbla konton med samma email
             if (exists)
             {
                 return BadRequest(new ErrorMessageResponseDto
@@ -45,7 +46,7 @@ namespace Zullo.Api.Controllers
                 });
             }
 
-            // HASHA lösenordet
+            // HASHA lösenordet innan det sparas i database
             var hash = BCrypt.Net.BCrypt.HashPassword(password);
 
             var user = new User
@@ -115,6 +116,7 @@ namespace Zullo.Api.Controllers
             }
 
             var ok = BCrypt.Net.BCrypt.Verify(password, user.PasswordHash);
+            //samma felmeddelande oavsett vad som var fel för att inte läcka onödig auth-info
             if (!ok)
             {
                 return Unauthorized(new ErrorMessageResponseDto
@@ -134,6 +136,7 @@ namespace Zullo.Api.Controllers
             });
         }
 
+        // Skapar JWT som frontend använder för alla skyddade endpoints
         private string GenerateJwt(User user)
         {
             // JWT-nyckeln måste finnas, annars kan jag inte skapa säkra tokens
