@@ -107,56 +107,62 @@ public class SwipeController : ControllerBase
 
         // Hämta kandidater (SQL slutar här)
         var candidates = await _db.Profiles.AsNoTracking()
-     // Endast profiler som är markerade synliga
-     .Where(p => p.IsVisible)
+            // Endast profiler som är markerade synliga
+            .Where(p => p.IsVisible)
 
-     // Extra säkerhet: feeden ska bara visa profiler med minst 2 bilder
-     .Where(p => p.PhotoUrls != null && p.PhotoUrls.Count >= 2)
+            // ❌ FEL (borttagen):
+            // .Where(p => p.PhotoUrls != null && p.PhotoUrls.Count >= 2)
+            // Den här kraschar PostgreSQL (jsonb + cardinality)
 
-     .Where(p => !excluded.Contains(p.UserId))
-     .Where(p => p.Age >= minAge && p.Age <= maxAge)
-     .Take(200)
-     .ToListAsync();
-
+            .Where(p => !excluded.Contains(p.UserId))
+            .Where(p => p.Age >= minAge && p.Age <= maxAge)
+            .Take(200)
+            .ToListAsync();
 
 
         // Räkna avstånd och filtrera inom radien (C#)
         var result = candidates
-     .Select(p => new SwipeProfileDto
-     {
-         UserId = p.UserId,
+            .Select(p => new SwipeProfileDto
+            {
+                UserId = p.UserId,
 
-         // skyddar mot null och konstiga värden
-         DisplayName = (p.DisplayName ?? "").Trim(),
-         Age = p.Age,
-         Bio = (p.Bio ?? "").Trim(),
+                // skyddar mot null och konstiga värden
+                DisplayName = (p.DisplayName ?? "").Trim(),
+                Age = p.Age,
+                Bio = (p.Bio ?? "").Trim(),
 
-         Intention = p.Intention,
-         Religion = p.Religion,
-         Workout = p.Workout,
-         Smoking = p.Smoking,
-         Pets = p.Pets,
+                Intention = p.Intention,
+                Religion = p.Religion,
+                Workout = p.Workout,
+                Smoking = p.Smoking,
+                Pets = p.Pets,
 
-         // säkerställ att listor aldrig är null
-         Interests = p.Interests ?? new List<string>(),
-         PhotoUrls = p.PhotoUrls ?? new List<string>(),
+                // säkerställ att listor aldrig är null
+                Interests = p.Interests ?? new List<string>(),
+                PhotoUrls = p.PhotoUrls ?? new List<string>(),
 
-         // första bild om den finns
-         PhotoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",
+                // första bild om den finns
+                PhotoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",
 
-         CountryCode = (p.CountryCode ?? "").Trim(),
+                CountryCode = (p.CountryCode ?? "").Trim(),
 
-         DistanceKm = Math.Round(
-             GeoService.DistanceKm(myLat, myLng, p.Lat, p.Lng),
-             1
-         )
-     })
-        // visa bara profiler som har minst 1 bild
-       .Where(x => x.PhotoUrls.Count > 0)
-      .Where(x => x.DistanceKm <= myRadiusKm)
-     .OrderBy(x => x.DistanceKm)
-     .Take(take)
-     .ToList();
+                DistanceKm = Math.Round(
+                    GeoService.DistanceKm(myLat, myLng, p.Lat, p.Lng),
+                    1
+                )
+            })
+
+            // ✅ FIX (flyttad hit istället för SQL):
+            // visa bara profiler som har minst 2 bilder
+            .Where(x => x.PhotoUrls != null && x.PhotoUrls.Count >= 2)
+
+            // ❌ gammal kommentar:
+            // .Where(x => x.PhotoUrls.Count > 0)
+
+            .Where(x => x.DistanceKm <= myRadiusKm)
+            .OrderBy(x => x.DistanceKm)
+            .Take(take)
+            .ToList();
 
         return Ok(new SwipeFeedResponseDto
         {
