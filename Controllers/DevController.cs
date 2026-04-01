@@ -76,12 +76,46 @@ public class DevController : ControllerBase
                 Gender = (i % 2 == 0) ? "Man" : "Kvinna",
                 Bio = "Testprofil för swipe-flödet",
 
-                Intention = (IntentionType)(i % 3),
-                Religion = ReligionType.Private,
+                Intention = (i % 5) switch
+                {
+                    0 => "Date",
+                    1 => "Relationship",
+                    2 => "Marriage",
+                    3 => "Serious",
+                    _ => "NotSure"
+                },
 
-                Workout = (TriState)(i % 3),
-                Smoking = (TriState)((i + 1) % 3),
-                Pets = (PetsType)(i % 3),
+                Religion = (i % 6) switch
+                {
+                    0 => "Christian",
+                    1 => "Muslim",
+                    2 => "Atheist",
+                    3 => "Orthodox",
+                    4 => "Agnostic",
+                    _ => "Private"
+                },
+
+                Workout = (i % 3) switch
+                {
+                    0 => "Never",
+                    1 => "Sometimes",
+                    _ => "Often"
+                },
+
+                Smoking = ((i + 1) % 3) switch
+                {
+                    0 => "No",
+                    1 => "Sometimes",
+                    _ => "Yes"
+                },
+
+                Pets = (i % 4) switch
+                {
+                    0 => "Have",
+                    1 => "Want",
+                    2 => "No",
+                    _ => "Allergic"
+                },
 
                 Interests = new List<string> { "Gym", "Resor", "Musik" },
 
