@@ -42,6 +42,26 @@ namespace Zullo.Api.Controllers
             profile.Workout = dto.Workout;
             profile.Smoking = dto.Smoking;
             profile.Pets = dto.Pets;
+            // New expanded profile fields
+            profile.HeightCm = dto.HeightCm;
+
+            profile.RelationshipHistory = dto.RelationshipHistory.Trim();
+            profile.ZodiacSign = dto.ZodiacSign.Trim();
+
+            profile.Alcohol = dto.Alcohol.Trim();
+            profile.Cannabis = dto.Cannabis.Trim();
+
+            profile.ChildrenCount = dto.ChildrenCount.Trim();
+            profile.WantChildren = dto.WantChildren.Trim();
+
+            profile.WorkStatus = dto.WorkStatus.Trim();
+            profile.StudyPlace = dto.StudyPlace.Trim();
+            profile.StudySubject = dto.StudySubject.Trim();
+            profile.WorkPlace = dto.WorkPlace.Trim();
+            profile.JobTitle = dto.JobTitle.Trim();
+
+            profile.LivePlace = dto.LivePlace.Trim();
+            profile.OriginPlace = dto.OriginPlace.Trim();
 
             // Trimma listor och ta bort tomma värden
             profile.Interests = (dto.Interests ?? new())
@@ -143,6 +163,20 @@ namespace Zullo.Api.Controllers
         Workout = p.Workout,
         Smoking = p.Smoking,
         Pets = p.Pets,
+        HeightCm = p.HeightCm,
+        RelationshipHistory = p.RelationshipHistory,
+        ZodiacSign = p.ZodiacSign,
+        Alcohol = p.Alcohol,
+        Cannabis = p.Cannabis,
+        ChildrenCount = p.ChildrenCount,
+        WantChildren = p.WantChildren,
+        WorkStatus = p.WorkStatus,
+        StudyPlace = p.StudyPlace,
+        StudySubject = p.StudySubject,
+        WorkPlace = p.WorkPlace,
+        JobTitle = p.JobTitle,
+        LivePlace = p.LivePlace,
+        OriginPlace = p.OriginPlace,
         Interests = p.Interests,
         PhotoUrls = p.PhotoUrls,
         Lat = p.Lat,

@@ -20,6 +20,25 @@ public class MyProfileDto
     public TriState Smoking { get; set; }
     public PetsType Pets { get; set; }
 
+    public int? HeightCm { get; set; }
+
+    public string RelationshipHistory { get; set; } = "";
+    public string ZodiacSign { get; set; } = "";
+
+    public string Alcohol { get; set; } = "";
+    public string Cannabis { get; set; } = "";
+
+    public string ChildrenCount { get; set; } = "";
+    public string WantChildren { get; set; } = "";
+
+    public string WorkStatus { get; set; } = "";
+    public string StudyPlace { get; set; } = "";
+    public string StudySubject { get; set; } = "";
+    public string WorkPlace { get; set; } = "";
+    public string JobTitle { get; set; } = "";
+
+    public string LivePlace { get; set; } = "";
+    public string OriginPlace { get; set; } = "";
     // Listor sparas redan som jsonb i Postgres
     public List<string> Interests { get; set; } = new();
     public List<string> PhotoUrls { get; set; } = new();

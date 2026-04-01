@@ -26,6 +26,46 @@ public class UpsertProfileDto
     public TriState Smoking { get; set; } = TriState.No;
     public PetsType Pets { get; set; } = PetsType.Want;
 
+    public int? HeightCm { get; set; }
+
+    [MaxLength(50)]
+    public string RelationshipHistory { get; set; } = "";
+
+    [MaxLength(50)]
+    public string ZodiacSign { get; set; } = "";
+
+    [MaxLength(30)]
+    public string Alcohol { get; set; } = "";
+
+    [MaxLength(30)]
+    public string Cannabis { get; set; } = "";
+
+    [MaxLength(30)]
+    public string ChildrenCount { get; set; } = "";
+
+    [MaxLength(30)]
+    public string WantChildren { get; set; } = "";
+
+    [MaxLength(30)]
+    public string WorkStatus { get; set; } = "";
+
+    [MaxLength(120)]
+    public string StudyPlace { get; set; } = "";
+
+    [MaxLength(120)]
+    public string StudySubject { get; set; } = "";
+
+    [MaxLength(120)]
+    public string WorkPlace { get; set; } = "";
+
+    [MaxLength(120)]
+    public string JobTitle { get; set; } = "";
+
+    [MaxLength(120)]
+    public string LivePlace { get; set; } = "";
+
+    [MaxLength(120)]
+    public string OriginPlace { get; set; } = "";
     public List<string> Interests { get; set; } = new();
     public List<string> PhotoUrls { get; set; } = new();
 
