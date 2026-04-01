@@ -19,12 +19,20 @@ public class UpsertProfileDto
     [MaxLength(1000)]
     public string Bio { get; set; } = "";
 
-    public IntentionType Intention { get; set; } = IntentionType.Relationship;
-    public ReligionType Religion { get; set; } = ReligionType.Private;
+    [MaxLength(50)]
+    public string Intention { get; set; } = "";
 
-    public TriState Workout { get; set; } = TriState.Sometimes;
-    public TriState Smoking { get; set; } = TriState.No;
-    public PetsType Pets { get; set; } = PetsType.Want;
+    [MaxLength(50)]
+    public string Religion { get; set; } = "";
+
+    [MaxLength(30)]
+    public string Workout { get; set; } = "";
+
+    [MaxLength(30)]
+    public string Smoking { get; set; } = "";
+
+    [MaxLength(30)]
+    public string Pets { get; set; } = "";
 
     public int? HeightCm { get; set; }
 

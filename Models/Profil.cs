@@ -18,13 +18,12 @@ public class Profile
 
     public string Bio { get; set; } = "";
 
-    public IntentionType Intention { get; set; } = IntentionType.Relationship;
-    public ReligionType Religion { get; set; } = ReligionType.Private;
+    public string Intention { get; set; } = "";
+    public string Religion { get; set; } = "";
 
-    // Tinder-like lifestyle
-    public TriState Workout { get; set; } = TriState.Sometimes;
-    public TriState Smoking { get; set; } = TriState.No;
-    public PetsType Pets { get; set; } = PetsType.Want;
+    public string Workout { get; set; } = "";
+    public string Smoking { get; set; } = "";
+    public string Pets { get; set; } = "";
 
     // New profile fields for expanded edit flow
     public int? HeightCm { get; set; }

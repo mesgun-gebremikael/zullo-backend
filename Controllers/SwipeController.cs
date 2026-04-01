@@ -131,11 +131,11 @@ public class SwipeController : ControllerBase
                 Age = p.Age,
                 Bio = (p.Bio ?? "").Trim(),
 
-                Intention = p.Intention,
-                Religion = p.Religion,
-                Workout = p.Workout,
-                Smoking = p.Smoking,
-                Pets = p.Pets,
+                Intention = (p.Intention ?? "").Trim(),
+                Religion = (p.Religion ?? "").Trim(),
+                Workout = (p.Workout ?? "").Trim(),
+                Smoking = (p.Smoking ?? "").Trim(),
+                Pets = (p.Pets ?? "").Trim(),
 
                 // säkerställ att listor aldrig är null
                 Interests = p.Interests ?? new List<string>(),

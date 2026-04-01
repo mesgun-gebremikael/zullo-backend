@@ -11,12 +11,12 @@ public class SwipeProfileDto
     public int Age { get; set; }
     public string Bio { get; set; } = "";
 
-    public IntentionType Intention { get; set; }
-    public ReligionType Religion { get; set; }
+    public string Intention { get; set; } = "";
+    public string Religion { get; set; } = "";
 
-    public TriState Workout { get; set; }
-    public TriState Smoking { get; set; }
-    public PetsType Pets { get; set; }
+    public string Workout { get; set; } = "";
+    public string Smoking { get; set; } = "";
+    public string Pets { get; set; } = "";
 
     // Intressen och alla bilder behövs i swipe-kortet
     public List<string> Interests { get; set; } = new();

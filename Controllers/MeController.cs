@@ -37,11 +37,11 @@ namespace Zullo.Api.Controllers
             profile.Bio = trimmedBio;
 
             // Dating-preferenser / livsstil
-            profile.Intention = dto.Intention;
-            profile.Religion = dto.Religion;
-            profile.Workout = dto.Workout;
-            profile.Smoking = dto.Smoking;
-            profile.Pets = dto.Pets;
+            profile.Intention = dto.Intention.Trim();
+            profile.Religion = dto.Religion.Trim();
+            profile.Workout = dto.Workout.Trim();
+            profile.Smoking = dto.Smoking.Trim();
+            profile.Pets = dto.Pets.Trim();
             // New expanded profile fields
             profile.HeightCm = dto.HeightCm;
 
