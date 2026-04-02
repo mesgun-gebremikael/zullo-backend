@@ -18,6 +18,26 @@ public class SwipeProfileDto
     public string Smoking { get; set; } = "";
     public string Pets { get; set; } = "";
 
+    public int? HeightCm { get; set; }
+
+    public string RelationshipHistory { get; set; } = "";
+    public string ZodiacSign { get; set; } = "";
+
+    public string Alcohol { get; set; } = "";
+    public string Cannabis { get; set; } = "";
+
+    public string ChildrenCount { get; set; } = "";
+    public string WantChildren { get; set; } = "";
+
+    public string WorkStatus { get; set; } = "";
+    public string StudyPlace { get; set; } = "";
+    public string StudySubject { get; set; } = "";
+    public string WorkPlace { get; set; } = "";
+    public string JobTitle { get; set; } = "";
+
+    public string LivePlace { get; set; } = "";
+    public string OriginPlace { get; set; } = "";
+
     // Intressen och alla bilder behövs i swipe-kortet
     public List<string> Interests { get; set; } = new();
 
