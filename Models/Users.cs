@@ -13,6 +13,8 @@ namespace Zullo.Api.Models
         public string PasswordHash { get; set; } = "";
         public string? GoogleSubject { get; set; } // unique id from Google
 
+        public string? DeviceToken { get; set; } // Firebase push token
+
         public bool IsVerified { get; set; } = false; // verified login method
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
