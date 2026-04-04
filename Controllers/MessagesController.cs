@@ -16,15 +16,21 @@ public class MessagesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly UserRelationService _userRelationService;
+    private readonly PushNotificationService _pushNotificationService;
 
-    public MessagesController(AppDbContext db, UserRelationService userRelationService)
+    public MessagesController(
+     AppDbContext db,
+     UserRelationService userRelationService,
+     PushNotificationService pushNotificationService)
     {
         _db = db;
         _userRelationService = userRelationService;
+        _pushNotificationService = pushNotificationService;
     }
 
 
-   
+
+
 
     // GET /messages/thread?otherUserId=GUID
     [HttpGet("thread")]
@@ -123,6 +129,34 @@ public class MessagesController : ControllerBase
 
         _db.Messages.Add(msg);
         await _db.SaveChangesAsync();
+
+        var sender = await _db.Profiles
+    .AsNoTracking()
+    .Where(p => p.UserId == meId)
+    .Select(p => p.DisplayName)
+    .FirstOrDefaultAsync();
+
+        var receiver = await _db.Users
+            .AsNoTracking()
+            .Where(u => u.Id == dto.ToUserId)
+            .Select(u => new { u.DeviceToken })
+            .FirstOrDefaultAsync();
+
+        if (receiver != null && !string.IsNullOrWhiteSpace(receiver.DeviceToken))
+        {
+            try
+            {
+                await _pushNotificationService.SendMessageNotificationAsync(
+                    receiver.DeviceToken,
+                    string.IsNullOrWhiteSpace(sender) ? "Nytt meddelande" : sender,
+                    trimmedText);
+            }
+            catch
+            {
+                // Vi låter meddelandet vara skickat även om push misslyckas
+            }
+        }
+
 
         return Ok(new MessageDto
         {

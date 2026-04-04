@@ -86,6 +86,7 @@ namespace Zullo.Api
             builder.Services.AddScoped<Zullo.Api.Services.LikeLimitService>();
             builder.Services.AddScoped<UserRelationService>();
             builder.Services.AddScoped<LoginAttemptService>();
+            builder.Services.AddScoped<PushNotificationService>();
 
             // ================================
             //  JWT AUTHENTICATION (NYTT)
