@@ -234,5 +234,39 @@ namespace Zullo.Api.Controllers
                 MatchRadiusKm = user.MatchRadiusKm
             });
         }
+
+        // ===============================
+        // POST /me/device-token
+        // Spara Firebase device token
+        // ===============================
+        [HttpPost("device-token")]
+        public async Task<IActionResult> SaveDeviceToken([FromBody] string token)
+        {
+            Guid meId;
+            try { meId = CurrentUserService.GetUserIdOrThrow(User); }
+            catch
+            {
+                return Unauthorized(new ErrorMessageResponseDto
+                {
+                    Message = "Invalid token."
+                });
+            }
+
+            var user = await _db.Users.FindAsync(meId);
+            if (user == null)
+            {
+                return NotFound(new ErrorMessageResponseDto
+                {
+                    Message = "User not found."
+                });
+            }
+
+            user.DeviceToken = token;
+
+            await _db.SaveChangesAsync();
+
+            return Ok(new { message = "Device token saved" });
+        }
+
     }
 }
