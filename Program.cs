@@ -6,6 +6,9 @@ using System.Text;
 using Zullo.Api.Data;
 using Npgsql;
 using Zullo.Api.Services;
+using FirebaseAdmin;
+using Google.Apis.Auth.OAuth2;
+
 
 namespace Zullo.Api
 {
@@ -14,6 +17,13 @@ namespace Zullo.Api
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+
+            // Firebase init
+            FirebaseApp.Create(new AppOptions()
+            {
+                Credential = GoogleCredential.FromFile("firebase-key.json")
+            });
+
 
             // CORS (Flutter Web)
             builder.Services.AddCors(options =>
