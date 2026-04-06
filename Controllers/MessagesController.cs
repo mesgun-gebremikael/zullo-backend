@@ -6,6 +6,7 @@ using Zullo.Api.Data;
 using Zullo.Api.Models;
 using Zullo.Api.Dtos;
 using Zullo.Api.Services;
+using System.Threading.Channels;
 
 namespace Zullo.Api.Controllers;
 
@@ -17,16 +18,21 @@ public class MessagesController : ControllerBase
     private readonly AppDbContext _db;
     private readonly UserRelationService _userRelationService;
     private readonly PushNotificationService _pushNotificationService;
+    private readonly ILogger<MessagesController> _logger;
+
 
     public MessagesController(
-     AppDbContext db,
-     UserRelationService userRelationService,
-     PushNotificationService pushNotificationService)
+    AppDbContext db,
+    UserRelationService userRelationService,
+    PushNotificationService pushNotificationService,
+    ILogger<MessagesController> logger)
     {
         _db = db;
         _userRelationService = userRelationService;
         _pushNotificationService = pushNotificationService;
+        _logger = logger;
     }
+
 
 
 
@@ -129,33 +135,43 @@ public class MessagesController : ControllerBase
 
         _db.Messages.Add(msg);
         await _db.SaveChangesAsync();
+        Console.WriteLine("SKA SKICKA PUSH NU");
 
         var sender = await _db.Profiles
-    .AsNoTracking()
-    .Where(p => p.UserId == meId)
-    .Select(p => p.DisplayName)
-    .FirstOrDefaultAsync();
+       .AsNoTracking()
+       .Where(p => p.UserId == meId)
+        .Select(p => p.DisplayName)
+        .FirstOrDefaultAsync();
 
         var receiver = await _db.Users
-            .AsNoTracking()
-            .Where(u => u.Id == dto.ToUserId)
-            .Select(u => new { u.DeviceToken })
-            .FirstOrDefaultAsync();
+     .AsNoTracking()
+     .Where(u => u.Id == dto.ToUserId)
+     .Select(u => new { u.DeviceToken })
+     .FirstOrDefaultAsync();
 
-        if (receiver != null && !string.IsNullOrWhiteSpace(receiver.DeviceToken))
+        _logger.LogInformation("DEVICE TOKEN CHECK: {Token}", receiver?.DeviceToken);
+
+        if (receiver != null)
         {
             try
             {
+                _logger.LogInformation("PUSH TRY START");
+
                 await _pushNotificationService.SendMessageNotificationAsync(
-                    receiver.DeviceToken,
-                    string.IsNullOrWhiteSpace(sender) ? "Nytt meddelande" : sender,
-                    trimmedText);
+     receiver.DeviceToken,
+     meId.ToString(),
+     string.IsNullOrWhiteSpace(sender) ? "Nytt meddelande" : sender,
+     trimmedText);
+
+
+                _logger.LogInformation("PUSH OK");
             }
-            catch
+            catch (Exception ex)
             {
-                // Vi låter meddelandet vara skickat även om push misslyckas
+                _logger.LogError(ex, "PUSH FAIL");
             }
         }
+
 
 
         return Ok(new MessageDto
