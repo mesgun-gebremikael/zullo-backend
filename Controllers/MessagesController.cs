@@ -138,17 +138,17 @@ public class MessagesController : ControllerBase
         Console.WriteLine("SKA SKICKA PUSH NU");
 
         var senderProfile = await _db.Profiles
-     .AsNoTracking()
-     .Where(p => p.UserId == meId)
-     .Select(p => new
-     {
-         p.DisplayName,
-         SenderPhotoUrl = p.PhotoUrls.FirstOrDefault()
-     })
-     .FirstOrDefaultAsync();
+    .AsNoTracking()
+    .Where(p => p.UserId == meId)
+    .Select(p => new
+    {
+        p.DisplayName,
+        p.PhotoUrls
+    })
+    .FirstOrDefaultAsync();
 
         var sender = senderProfile?.DisplayName;
-        var senderPhotoUrl = senderProfile?.SenderPhotoUrl;
+        var senderPhotoUrl = senderProfile?.PhotoUrls?.FirstOrDefault();
 
         var receiver = await _db.Users
             .AsNoTracking()
