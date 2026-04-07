@@ -137,17 +137,24 @@ public class MessagesController : ControllerBase
         await _db.SaveChangesAsync();
         Console.WriteLine("SKA SKICKA PUSH NU");
 
-        var sender = await _db.Profiles
-       .AsNoTracking()
-       .Where(p => p.UserId == meId)
-        .Select(p => p.DisplayName)
-        .FirstOrDefaultAsync();
+        var senderProfile = await _db.Profiles
+     .AsNoTracking()
+     .Where(p => p.UserId == meId)
+     .Select(p => new
+     {
+         p.DisplayName,
+         SenderPhotoUrl = p.PhotoUrls.FirstOrDefault()
+     })
+     .FirstOrDefaultAsync();
+
+        var sender = senderProfile?.DisplayName;
+        var senderPhotoUrl = senderProfile?.SenderPhotoUrl;
 
         var receiver = await _db.Users
-     .AsNoTracking()
-     .Where(u => u.Id == dto.ToUserId)
-     .Select(u => new { u.DeviceToken })
-     .FirstOrDefaultAsync();
+            .AsNoTracking()
+            .Where(u => u.Id == dto.ToUserId)
+            .Select(u => new { u.DeviceToken })
+            .FirstOrDefaultAsync();
 
         _logger.LogInformation("DEVICE TOKEN CHECK: {Token}", receiver?.DeviceToken);
 
@@ -158,11 +165,11 @@ public class MessagesController : ControllerBase
                 _logger.LogInformation("PUSH TRY START");
 
                 await _pushNotificationService.SendMessageNotificationAsync(
-               receiver.DeviceToken,
-     meId.ToString(),
-     string.IsNullOrWhiteSpace(sender) ? "Nytt meddelande" : sender,
-     trimmedText);
-
+                    receiver.DeviceToken,
+                    meId.ToString(),
+                    string.IsNullOrWhiteSpace(sender) ? "Nytt meddelande" : sender,
+                    trimmedText,
+                    senderPhotoUrl);
 
                 _logger.LogInformation("PUSH OK");
             }
