@@ -158,7 +158,7 @@ public class MessagesController : ControllerBase
                 _logger.LogInformation("PUSH TRY START");
 
                 await _pushNotificationService.SendMessageNotificationAsync(
-     receiver.DeviceToken,
+               receiver.DeviceToken,
      meId.ToString(),
      string.IsNullOrWhiteSpace(sender) ? "Nytt meddelande" : sender,
      trimmedText);

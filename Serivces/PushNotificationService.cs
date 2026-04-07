@@ -6,10 +6,11 @@ namespace Zullo.Api.Services
     public class PushNotificationService
     {
         public async Task SendMessageNotificationAsync(
-            string deviceToken,
-            string senderUserId,
-            string senderName,
-            string messageText)
+    string deviceToken,
+    string senderUserId,
+    string senderName,
+    string messageText,
+    string? senderPhotoUrl)
         {
             if (string.IsNullOrWhiteSpace(deviceToken))
                 return;
@@ -40,12 +41,13 @@ namespace Zullo.Api.Services
                 },
 
                 Data = new Dictionary<string, string>
-                {
+{
                     { "type", "message" },
-                    { "senderUserId", senderUserId },
-                    { "senderName", senderName },
-                    { "messageText", messageText }
-                }
+                     { "senderUserId", senderUserId },
+                     { "senderName", senderName },
+                      { "messageText", messageText },
+                      { "senderPhotoUrl", senderPhotoUrl ?? "" }
+}
             };
 
             await FirebaseMessaging.DefaultInstance.SendAsync(message);
