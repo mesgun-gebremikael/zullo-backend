@@ -1,13 +1,17 @@
 ﻿
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Zullo.Api.Data;
+using Zullo.Api.Hubs;
+
 using Npgsql;
 using Zullo.Api.Services;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
+
 
 
 namespace Zullo.Api
@@ -111,6 +115,10 @@ namespace Zullo.Api
 
             builder.Services.AddAuthorization();
 
+            builder.Services.AddSignalR();
+            builder.Services.AddSingleton<IUserIdProvider, NameIdentifierUserIdProvider>();
+
+
             var app = builder.Build();
 
             app.UseExceptionHandler(errorApp =>
@@ -193,6 +201,8 @@ namespace Zullo.Api
             app.UseAuthorization();
 
             app.MapControllers();
+            app.MapHub<ChatHub>("/hubs/chat");
+
 
             app.Run();
         }

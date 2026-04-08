@@ -89,22 +89,29 @@ public class MatchesController : ControllerBase
                 otherUserId = g.Key,
 
                 lastMessageText = g
-                    .OrderByDescending(x => x.CreatedAtUtc)
-                    .Select(x => x.Text)
-                    .FirstOrDefault(),
+                     .OrderByDescending(x => x.CreatedAtUtc)
+                     .Select(x => x.Text)
+                     .FirstOrDefault(),
 
                 lastMessageAtUtc = g
-                    .OrderByDescending(x => x.CreatedAtUtc)
-                    .Select(x => (DateTime?)x.CreatedAtUtc)
-                    .FirstOrDefault(),
+                     .OrderByDescending(x => x.CreatedAtUtc)
+                     .Select(x => (DateTime?)x.CreatedAtUtc)
+                     .FirstOrDefault(),
 
-                // Olästa = meddelanden från other -> mig som saknar ReadAtUtc
                 hasUnread = g.Any(x =>
                     x.FromUserId == g.Key &&
                     x.ToUserId == meId &&
                     x.ReadAtUtc == null
-                ),
+    ),
+
+                //  NY – räkna exakt antal olästa
+                unreadMessageCount = g.Count(x =>
+                    x.FromUserId == g.Key &&
+                    x.ToUserId == meId &&
+                    x.ReadAtUtc == null
+    ),
             })
+
             .ToListAsync();
 
         var lastMap = lastMsgs.ToDictionary(x => x.otherUserId, x => x);
@@ -131,7 +138,10 @@ public class MatchesController : ControllerBase
                     ? mc
                     : (DateTime?)null,
 
-                HasUnread = last?.hasUnread ?? false
+                HasUnread = last?.hasUnread ?? false,
+                UnreadMessageCount = last?.unreadMessageCount ?? 0,
+
+
             };
         })
         .OrderByDescending(x => x.HasUnread)

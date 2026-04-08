@@ -22,4 +22,9 @@ public class MatchListItemDto
 
     // Visar unread-dot i frontend
     public bool HasUnread { get; set; }
+
+    // Exakt antal olästa meddelanden (NY – används för badge)
+    public int UnreadMessageCount { get; set; }
+
+
 }
