@@ -10,4 +10,8 @@ public class SendMessageDto
     [Required]
     [MaxLength(2000)]
     public string Text { get; set; } = "";
+
+    [Required]
+    [MaxLength(100)]
+    public string ClientMessageId { get; set; } = "";
 }

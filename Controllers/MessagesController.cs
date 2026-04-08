@@ -137,21 +137,25 @@ public class MessagesController : ControllerBase
             FromUserId = meId,
             ToUserId = dto.ToUserId,
             Text = trimmedText,
+            ClientMessageId = dto.ClientMessageId,
             CreatedAtUtc = DateTime.UtcNow
         };
+
 
         _db.Messages.Add(msg);
         await _db.SaveChangesAsync();
 
         await _chatHub.Clients.User(dto.ToUserId.ToString()).SendAsync(
-            "MessageReceived",
-            new
-            {
-                fromUserId = meId,
-                toUserId = dto.ToUserId,
-                text = trimmedText,
-                createdAtUtc = msg.CreatedAtUtc
-            });
+     "MessageReceived",
+     new
+     {
+         fromUserId = meId,
+         toUserId = dto.ToUserId,
+         text = trimmedText,
+         createdAtUtc = msg.CreatedAtUtc,
+         clientMessageId = msg.ClientMessageId
+     });
+
 
         Console.WriteLine("SKA SKICKA PUSH NU");
 
@@ -207,8 +211,10 @@ public class MessagesController : ControllerBase
             ToUserId = msg.ToUserId,
             Text = msg.Text,
             CreatedAtUtc = msg.CreatedAtUtc,
-            ReadAtUtc = msg.ReadAtUtc
+            ReadAtUtc = msg.ReadAtUtc,
+            ClientMessageId = msg.ClientMessageId
         });
+
     }
 
     // POST /messages/mark-read?otherUserId=GUID
@@ -255,10 +261,19 @@ public class MessagesController : ControllerBase
 
         await _db.SaveChangesAsync();
 
+        await _chatHub.Clients.User(otherUserId.ToString()).SendAsync(
+            "MessagesRead",
+            new
+            {
+                chatUserId = meId,
+                readAtUtc = now
+            });
+
         return Ok(new MarkReadResponseDto
         {
             Updated = toMark.Count,
             ReadAtUtc = now
         });
+
     }
 }
