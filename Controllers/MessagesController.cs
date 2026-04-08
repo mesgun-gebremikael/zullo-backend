@@ -81,8 +81,10 @@ public class MessagesController : ControllerBase
                ToUserId = m.ToUserId,
                Text = m.Text,
                CreatedAtUtc = m.CreatedAtUtc,
-               ReadAtUtc = m.ReadAtUtc
+               ReadAtUtc = m.ReadAtUtc,
+               ClientMessageId = m.ClientMessageId
            })
+
             .ToListAsync();
 
         return Ok(msgs);
@@ -114,21 +116,23 @@ public class MessagesController : ControllerBase
             });
         }
 
-        // Anti-spam: max 1 message per 1 sekund per user
-        var oneSecondAgo = DateTime.UtcNow.AddSeconds(-1);
+        // Anti-spam: max 3 meddelanden per 2 sekunder per user
+        var windowStart = DateTime.UtcNow.AddSeconds(-2);
 
-        var recentMessage = await _db.Messages
-            .Where(m => m.FromUserId == meId)
-            .OrderByDescending(m => m.CreatedAtUtc)
-            .FirstOrDefaultAsync();
+        var recentMessageCount = await _db.Messages
+            .CountAsync(m =>
+                m.FromUserId == meId &&
+                m.CreatedAtUtc >= windowStart
+            );
 
-        if (recentMessage != null && recentMessage.CreatedAtUtc > oneSecondAgo)
+        if (recentMessageCount >= 3)
         {
             return BadRequest(new ErrorMessageResponseDto
             {
                 Message = "You're sending messages too fast."
             });
         }
+
 
         var trimmedText = dto.Text.Trim();
 
