@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using Zullo.Api.Data;
 using Zullo.Api.Models;
+using Microsoft.AspNetCore.SignalR;
+using Zullo.Api.Hubs;
 using Zullo.Api.Dtos;
 using Zullo.Api.Services;
 using System.Threading.Channels;
@@ -19,19 +21,24 @@ public class MessagesController : ControllerBase
     private readonly UserRelationService _userRelationService;
     private readonly PushNotificationService _pushNotificationService;
     private readonly ILogger<MessagesController> _logger;
+    private readonly IHubContext<ChatHub> _chatHub;
+
 
 
     public MessagesController(
-    AppDbContext db,
-    UserRelationService userRelationService,
-    PushNotificationService pushNotificationService,
-    ILogger<MessagesController> logger)
+     AppDbContext db,
+     UserRelationService userRelationService,
+     PushNotificationService pushNotificationService,
+     ILogger<MessagesController> logger,
+     IHubContext<ChatHub> chatHub)
     {
         _db = db;
         _userRelationService = userRelationService;
         _pushNotificationService = pushNotificationService;
         _logger = logger;
+        _chatHub = chatHub;
     }
+
 
 
 
@@ -135,7 +142,19 @@ public class MessagesController : ControllerBase
 
         _db.Messages.Add(msg);
         await _db.SaveChangesAsync();
+
+        await _chatHub.Clients.User(dto.ToUserId.ToString()).SendAsync(
+            "MessageReceived",
+            new
+            {
+                fromUserId = meId,
+                toUserId = dto.ToUserId,
+                text = trimmedText,
+                createdAtUtc = msg.CreatedAtUtc
+            });
+
         Console.WriteLine("SKA SKICKA PUSH NU");
+
 
         var senderProfile = await _db.Profiles
     .AsNoTracking()
