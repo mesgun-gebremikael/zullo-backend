@@ -240,7 +240,7 @@ namespace Zullo.Api.Controllers
         // Spara Firebase device token
         // ===============================
         [HttpPost("device-token")]
-        public async Task<IActionResult> SaveDeviceToken([FromBody] string token)
+        public async Task<IActionResult> SaveDeviceToken([FromBody] SaveDeviceTokenDto dto)
         {
             Guid meId;
             try { meId = CurrentUserService.GetUserIdOrThrow(User); }
@@ -252,7 +252,17 @@ namespace Zullo.Api.Controllers
                 });
             }
 
-            var user = await _db.Users.FindAsync(meId);
+            var trimmedToken = dto.Token.Trim();
+
+            if (string.IsNullOrWhiteSpace(trimmedToken))
+            {
+                return BadRequest(new ErrorMessageResponseDto
+                {
+                    Message = "Device token is required."
+                });
+            }
+
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == meId);
             if (user == null)
             {
                 return NotFound(new ErrorMessageResponseDto
@@ -261,11 +271,26 @@ namespace Zullo.Api.Controllers
                 });
             }
 
-            user.DeviceToken = token;
+            // Viktigt:
+            // samma device token får bara tillhöra ett konto åt gången.
+            // Därför rensar vi först token från alla andra users.
+            var otherUsersWithSameToken = await _db.Users
+                .Where(u => u.Id != meId && u.DeviceToken == trimmedToken)
+                .ToListAsync();
+
+            foreach (var otherUser in otherUsersWithSameToken)
+            {
+                otherUser.DeviceToken = null;
+            }
+
+            user.DeviceToken = trimmedToken;
 
             await _db.SaveChangesAsync();
 
-            return Ok(new { message = "Device token saved" });
+            return Ok(new
+            {
+                message = "Device token saved"
+            });
         }
 
     }
