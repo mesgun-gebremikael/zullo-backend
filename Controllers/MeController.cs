@@ -273,7 +273,7 @@ namespace Zullo.Api.Controllers
 
             // Viktigt:
             // samma device token får bara tillhöra ett konto åt gången.
-            // Därför rensar vi först token från alla andra users.
+            // Därför rensar jag först token från alla andra users.
             var otherUsersWithSameToken = await _db.Users
                 .Where(u => u.Id != meId && u.DeviceToken == trimmedToken)
                 .ToListAsync();
@@ -290,6 +290,40 @@ namespace Zullo.Api.Controllers
             return Ok(new
             {
                 message = "Device token saved"
+            });
+        }
+
+        [HttpPost("device-token/clear")]
+        public async Task<IActionResult> ClearDeviceToken()
+        {
+            Guid meId;
+            try { meId = CurrentUserService.GetUserIdOrThrow(User); }
+            catch
+            {
+                return Unauthorized(new ErrorMessageResponseDto
+                {
+                    Message = "Invalid token."
+                });
+            }
+
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == meId);
+            if (user == null)
+            {
+                return NotFound(new ErrorMessageResponseDto
+                {
+                    Message = "User not found."
+                });
+            }
+
+            // Logout / account switch:
+            // koppla loss device token från nuvarande konto.
+            user.DeviceToken = null;
+
+            await _db.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "Device token cleared"
             });
         }
 
