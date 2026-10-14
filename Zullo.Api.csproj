@@ -29,4 +29,7 @@
     <Folder Include="Security\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="Zullo.Api.Tests/**/*.cs" />
+  </ItemGroup>
 </Project>
