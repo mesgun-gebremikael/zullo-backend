@@ -1,31 +1,34 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Zullo.Api.Data;
+using System.Threading.RateLimiting;
 
 namespace Zullo.Api.Services;
 
-public class LoginAttemptService
+/// Shared across requests. Limits all attempts, including unknown accounts and successes.
+public sealed class LoginAttemptService : IDisposable
 {
-    private readonly AppDbContext _db;
+    private readonly PartitionedRateLimiter<string> _limiter;
 
-    public LoginAttemptService(AppDbContext db)
+    public LoginAttemptService() : this(5, TimeSpan.FromMinutes(1)) { }
+
+    internal LoginAttemptService(int permitLimit, TimeSpan window)
     {
-        _db = db;
+        _limiter = PartitionedRateLimiter.Create<string, string>(email =>
+            RateLimitPartition.GetFixedWindowLimiter(email.Trim().ToLowerInvariant(), _ =>
+                new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = permitLimit,
+                    Window = window,
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                }));
     }
 
-    public async Task<bool> IsTryingTooFastAsync(string normalizedEmail)
+    public bool TryAcquire(string email, out TimeSpan retryAfter)
     {
-        var twoSecondsAgo = DateTime.UtcNow.AddSeconds(-2);
-
-        var recentUser = await _db.Users.AsNoTracking()
-            .Where(u => u.Email == normalizedEmail)
-            .Select(u => new { u.Id })
-            .FirstOrDefaultAsync();
-
-        // Om user inte finns än kan vi inte läsa riktiga försök i DB här.
-        // Light-version: bara returnera false nu.
-        if (recentUser == null)
-            return false;
-
-        return false;
+        using var lease = _limiter.AttemptAcquire(email);
+        retryAfter = lease.TryGetMetadata(MetadataName.RetryAfter, out var retry)
+            ? retry : TimeSpan.FromMinutes(1);
+        return lease.IsAcquired;
     }
+
+    public void Dispose() => _limiter.Dispose();
 }

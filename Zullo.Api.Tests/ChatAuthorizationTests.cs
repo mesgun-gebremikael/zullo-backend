@@ -256,9 +256,11 @@ public class ChatAuthorizationTests
                         };
                     });
                     services.AddAuthorization();
+                    services.AddAuthenticationProtection();
                 }).Configure(builder =>
                 {
                     builder.UseRouting();
+                    builder.UseRateLimiter();
                     builder.UseAuthentication();
                     builder.UseAuthorization();
                     builder.UseEndpoints(e => e.MapControllers());
