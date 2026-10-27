@@ -10,12 +10,21 @@ namespace Zullo.Api.Services
     string senderUserId,
     string senderName,
     string messageText,
-    string? senderPhotoUrl)
+    string? senderPhotoUrl,
+    string recipientUserId)
         {
             if (string.IsNullOrWhiteSpace(deviceToken))
                 return;
 
-            var message = new Message
+            var message = CreateMessage(deviceToken, senderUserId, senderName,
+                messageText, senderPhotoUrl, recipientUserId);
+            await FirebaseMessaging.DefaultInstance.SendAsync(message);
+        }
+
+        internal static Message CreateMessage(string deviceToken, string senderUserId,
+            string senderName, string messageText, string? senderPhotoUrl, string recipientUserId)
+        {
+            return new Message
             {
                 Token = deviceToken,
 
@@ -43,6 +52,7 @@ namespace Zullo.Api.Services
                 Data = new Dictionary<string, string>
 {
                     { "type", "message" },
+                    { "recipientUserId", recipientUserId },
                      { "senderUserId", senderUserId },
                      { "senderName", senderName },
                       { "messageText", messageText },
@@ -50,7 +60,6 @@ namespace Zullo.Api.Services
 }
             };
 
-            await FirebaseMessaging.DefaultInstance.SendAsync(message);
         }
     }
 }
