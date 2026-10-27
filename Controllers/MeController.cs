@@ -6,7 +6,6 @@ using Zullo.Api.Data;
 using Zullo.Api.Dtos;
 using Zullo.Api.Models;
 using Zullo.Api.Services;
-using Zullo.Api.Services;
 
 namespace Zullo.Api.Controllers
 {
@@ -24,67 +23,41 @@ namespace Zullo.Api.Controllers
 
         private static void MapUpsertProfileDtoToProfile(UpsertProfileDto dto, Profile profile)
         {
-            // Trimma textfält så vi inte sparar onödiga mellanslag i databasen
-            var trimmedDisplayName = dto.DisplayName.Trim();
-            var trimmedGender = dto.Gender.Trim();
-            var trimmedBio = dto.Bio.Trim();
-            var trimmedCountryCode = dto.CountryCode.Trim();
-
-            // Grundfält för profil
-            profile.DisplayName = trimmedDisplayName;
-            profile.Age = dto.Age;
-            profile.Gender = trimmedGender;
-            profile.Bio = trimmedBio;
-
-            // Dating-preferenser / livsstil
-            profile.Intention = dto.Intention.Trim();
-            profile.Religion = dto.Religion.Trim();
-            profile.Workout = dto.Workout.Trim();
-            profile.Smoking = dto.Smoking.Trim();
-            profile.Pets = dto.Pets.Trim();
-            // New expanded profile fields
-            profile.HeightCm = dto.HeightCm;
-
-            profile.RelationshipHistory = dto.RelationshipHistory.Trim();
-            profile.ZodiacSign = dto.ZodiacSign.Trim();
-
-            profile.Alcohol = dto.Alcohol.Trim();
-            profile.Cannabis = dto.Cannabis.Trim();
-
-            profile.ChildrenCount = dto.ChildrenCount.Trim();
-            profile.WantChildren = dto.WantChildren.Trim();
-
-            profile.WorkStatus = dto.WorkStatus.Trim();
-            profile.StudyPlace = dto.StudyPlace.Trim();
-            profile.StudySubject = dto.StudySubject.Trim();
-            profile.WorkPlace = dto.WorkPlace.Trim();
-            profile.JobTitle = dto.JobTitle.Trim();
-
-            profile.LivePlace = dto.LivePlace.Trim();
-            profile.OriginPlace = dto.OriginPlace.Trim();
-
-            // Trimma listor och ta bort tomma värden
-            profile.Interests = (dto.Interests ?? new())
-                .Select(x => x.Trim())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .ToList();
-
-            profile.PhotoUrls = (dto.PhotoUrls ?? new())
-                .Select(x => x.Trim())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .ToList();
-
-            // Position / land
-            profile.Lat = dto.Lat;
-            profile.Lng = dto.Lng;
-            profile.CountryCode = trimmedCountryCode;
-
-            // Synlig först när minst 2 bilder finns
-            profile.IsVisible = profile.PhotoUrls.Count >= 2;
+            if (dto.Has(nameof(dto.DisplayName))) profile.DisplayName = dto.DisplayName!.Trim();
+            if (dto.Has(nameof(dto.Age))) profile.Age = dto.Age!.Value;
+            if (dto.Has(nameof(dto.Gender))) profile.Gender = dto.Gender!.Trim();
+            if (dto.Has(nameof(dto.Bio))) profile.Bio = dto.Bio!.Trim();
+            if (dto.Has(nameof(dto.Intention))) profile.Intention = dto.Intention!.Trim();
+            if (dto.Has(nameof(dto.Religion))) profile.Religion = dto.Religion!.Trim();
+            if (dto.Has(nameof(dto.Workout))) profile.Workout = dto.Workout!.Trim();
+            if (dto.Has(nameof(dto.Smoking))) profile.Smoking = dto.Smoking!.Trim();
+            if (dto.Has(nameof(dto.Pets))) profile.Pets = dto.Pets!.Trim();
+            if (dto.Has(nameof(dto.HeightCm))) profile.HeightCm = dto.HeightCm;
+            if (dto.Has(nameof(dto.RelationshipHistory))) profile.RelationshipHistory = dto.RelationshipHistory!.Trim();
+            if (dto.Has(nameof(dto.ZodiacSign))) profile.ZodiacSign = dto.ZodiacSign!.Trim();
+            if (dto.Has(nameof(dto.Alcohol))) profile.Alcohol = dto.Alcohol!.Trim();
+            if (dto.Has(nameof(dto.Cannabis))) profile.Cannabis = dto.Cannabis!.Trim();
+            if (dto.Has(nameof(dto.ChildrenCount))) profile.ChildrenCount = dto.ChildrenCount!.Trim();
+            if (dto.Has(nameof(dto.WantChildren))) profile.WantChildren = dto.WantChildren!.Trim();
+            if (dto.Has(nameof(dto.WorkStatus))) profile.WorkStatus = dto.WorkStatus!.Trim();
+            if (dto.Has(nameof(dto.StudyPlace))) profile.StudyPlace = dto.StudyPlace!.Trim();
+            if (dto.Has(nameof(dto.StudySubject))) profile.StudySubject = dto.StudySubject!.Trim();
+            if (dto.Has(nameof(dto.WorkPlace))) profile.WorkPlace = dto.WorkPlace!.Trim();
+            if (dto.Has(nameof(dto.JobTitle))) profile.JobTitle = dto.JobTitle!.Trim();
+            if (dto.Has(nameof(dto.LivePlace))) profile.LivePlace = dto.LivePlace!.Trim();
+            if (dto.Has(nameof(dto.OriginPlace))) profile.OriginPlace = dto.OriginPlace!.Trim();
+            if (dto.Has(nameof(dto.Interests))) profile.Interests = dto.Interests!.Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
+            if (dto.Has(nameof(dto.PhotoUrls))) profile.PhotoUrls = dto.PhotoUrls!.Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
+            if (dto.Has(nameof(dto.Lat))) profile.Lat = dto.Lat!.Value;
+            if (dto.Has(nameof(dto.Lng))) profile.Lng = dto.Lng!.Value;
+            if (dto.Has(nameof(dto.CountryCode))) profile.CountryCode = dto.CountryCode!.Trim();
+            if (dto.Has(nameof(dto.InterestedIn))) profile.InterestedIn = dto.InterestedIn!.Trim();
+            if (dto.Has(nameof(dto.PhotoUrls))) profile.IsVisible = profile.PhotoUrls.Count >= 2;
         }
 
 
         [HttpPost("profile")]
+        [HttpPatch("profile")]
         public async Task<IActionResult> UpsertProfile([FromBody] UpsertProfileDto dto)
         {
             Guid meId;
@@ -113,12 +86,17 @@ namespace Zullo.Api.Controllers
             var profile = await _db.Profiles.FirstOrDefaultAsync(p => p.UserId == meId);
             if (profile == null)
             {
+                if (string.IsNullOrWhiteSpace(dto.DisplayName)) ModelState.AddModelError(nameof(dto.DisplayName), "DisplayName is required for a new profile.");
+                if (dto.Age == null) ModelState.AddModelError(nameof(dto.Age), "Age is required for a new profile.");
+                if (string.IsNullOrWhiteSpace(dto.Gender)) ModelState.AddModelError(nameof(dto.Gender), "Gender is required for a new profile.");
+                if (!ModelState.IsValid) return ValidationProblem(ModelState);
                 profile = new Profile { UserId = meId };
                 _db.Profiles.Add(profile);
             }
 
             // Mappar DTO till Profile så logiken ligger på ett ställe
             MapUpsertProfileDtoToProfile(dto, profile);
+            if (dto.Has(nameof(dto.MatchRadiusKm))) user.MatchRadiusKm = dto.MatchRadiusKm!.Value;
 
             await _db.SaveChangesAsync();
 
@@ -157,6 +135,8 @@ namespace Zullo.Api.Controllers
         DisplayName = p.DisplayName,
         Age = p.Age,
         Gender = p.Gender,
+        InterestedIn = p.InterestedIn,
+        MatchRadiusKm = p.User!.MatchRadiusKm,
         Bio = p.Bio,
         Intention = p.Intention,
         Religion = p.Religion,

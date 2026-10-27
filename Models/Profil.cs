@@ -16,6 +16,8 @@ public class Profile
     public int Age { get; set; } // must be >= 18
     public string Gender { get; set; } = ""; // keep simple v1
 
+    public string InterestedIn { get; set; } = "";
+
     public string Bio { get; set; } = "";
 
     public string Intention { get; set; } = "";

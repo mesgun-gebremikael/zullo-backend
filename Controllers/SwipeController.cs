@@ -105,10 +105,18 @@ public class SwipeController : ControllerBase
           .ToHashSet();
         excluded.Add(meId);
 
+        var preferredGender = myProfile.InterestedIn switch
+        {
+            "Män" => "Man",
+            "Kvinnor" => "Kvinna",
+            _ => null // Existing profiles keep their previous unfiltered behavior.
+        };
+
         // Hämta kandidater (SQL slutar här)
         var candidates = await _db.Profiles.AsNoTracking()
             // Endast profiler som är markerade synliga
             .Where(p => p.IsVisible)
+            .Where(p => preferredGender == null || p.Gender == preferredGender)
 
             // ❌ FEL (borttagen):
             // .Where(p => p.PhotoUrls != null && p.PhotoUrls.Count >= 2)

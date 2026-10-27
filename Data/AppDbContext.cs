@@ -72,6 +72,8 @@ public class AppDbContext : DbContext
             .Property(p => p.CountryCode)
             .HasMaxLength(10);
 
+        modelBuilder.Entity<Profile>().Property(p => p.InterestedIn).HasMaxLength(30);
+
         // Store lists as JSON in Postgres (simple for v1)
         modelBuilder.Entity<Profile>()
             .Property(p => p.Interests)

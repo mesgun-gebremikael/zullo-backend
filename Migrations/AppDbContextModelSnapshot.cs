@@ -182,6 +182,11 @@ namespace Zullo.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("InterestedIn")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
                     b.Property<List<string>>("Interests")
                         .IsRequired()
                         .HasColumnType("jsonb");

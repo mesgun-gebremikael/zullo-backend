@@ -4,7 +4,7 @@ namespace Zullo.Api.Dtos
 {
     public class UpdateRadiusDto
     {
-        [Range(1, 200)]
+        [Range(1, 300)]
         public int MatchRadiusKm { get; set; }
     }
 }

@@ -11,6 +11,8 @@ public class MyProfileDto
     public string DisplayName { get; set; } = "";
     public int Age { get; set; }
     public string Gender { get; set; } = "";
+    public string InterestedIn { get; set; } = "";
+    public int MatchRadiusKm { get; set; }
     public string Bio { get; set; } = "";
 
     public string Intention { get; set; } = "";

@@ -214,7 +214,7 @@ public class ChatAuthorizationTests
             toUserId = other, text = "Must not be saved", clientMessageId = "unauthorized"
         });
 
-    private sealed class TestApp : IAsyncDisposable
+    internal sealed class TestApp : IAsyncDisposable
     {
         private readonly SqliteConnection _connection = new("Data Source=:memory:");
         private readonly byte[] _key = RandomNumberGenerator.GetBytes(32);
