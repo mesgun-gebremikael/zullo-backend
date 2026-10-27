@@ -204,6 +204,15 @@ public class SwipeController : ControllerBase
             });
         }
 
+        // A direct API request must respect blocks just like the swipe feed.
+        if (await _userRelationService.IsBlockedAsync(meId, dto.TargetUserId))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ErrorMessageResponseDto
+            {
+                Message = "You cannot like this user."
+            });
+        }
+
         // Anti-spam: max 1 like per 500 ms
         var halfSecondAgo = DateTime.UtcNow.AddMilliseconds(-500);
 
