@@ -196,7 +196,8 @@ public class MessagesController : ControllerBase
                     meId.ToString(),
                     string.IsNullOrWhiteSpace(sender) ? "Nytt meddelande" : sender,
                     trimmedText,
-                    senderPhotoUrl);
+                    senderPhotoUrl,
+                    dto.ToUserId.ToString());
 
                 _logger.LogInformation("PUSH OK");
             }
