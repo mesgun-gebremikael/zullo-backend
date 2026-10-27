@@ -89,7 +89,7 @@ namespace Zullo.Api
 
             builder.Services.AddScoped<Zullo.Api.Services.LikeLimitService>();
             builder.Services.AddScoped<UserRelationService>();
-            builder.Services.AddScoped<LoginAttemptService>();
+            builder.Services.AddAuthenticationProtection();
             builder.Services.AddScoped<PushNotificationService>();
 
             // ================================
@@ -185,7 +185,9 @@ namespace Zullo.Api
                     elapsedMs);
             });
 
+            app.UseRouting();
             app.UseCors("AllowFlutterWeb");
+            app.UseRateLimiter();
 
             if (app.Environment.IsDevelopment())
             {

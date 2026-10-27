@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -14,8 +15,10 @@ namespace Zullo.Api.Controllers
 {
     [ApiController]
     [Route("api/auth")]
+    [EnableRateLimiting(AuthenticationProtection.Policy)]
     public class AuthController : ControllerBase
     {
+        private static readonly string DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword("not-a-user-password");
         private readonly AppDbContext _db;
         private readonly IConfiguration _config;
         private readonly LoginAttemptService _loginAttemptService;
@@ -88,36 +91,20 @@ namespace Zullo.Api.Controllers
 
             var password = request.Password;
 
-            var tooFast = await _loginAttemptService.IsTryingTooFastAsync(normalizedEmail);
-            if (tooFast)
+            if (!_loginAttemptService.TryAcquire(normalizedEmail, out var retryAfter))
             {
-                return BadRequest(new ErrorMessageResponseDto
+                Response.Headers.RetryAfter = AuthenticationProtection.RetrySeconds(retryAfter);
+                return StatusCode(StatusCodes.Status429TooManyRequests, new ErrorMessageResponseDto
                 {
-                    Message = "Too many login attempts. Please wait a moment."
+                    Message = "Too many authentication attempts. Try again later."
                 });
             }
 
             var user = await _db.Users.FirstOrDefaultAsync(x => x.Email == normalizedEmail);
-            if (user == null)
-            {
-                return Unauthorized(new ErrorMessageResponseDto
-                {
-                    Message = "Invalid email or password."
-                });
-            }
-
-            //  skydd mot gamla null-rader
-            if (string.IsNullOrWhiteSpace(user.PasswordHash))
-            {
-                return Unauthorized(new ErrorMessageResponseDto
-                {
-                    Message = "User has no password set. Re-register this user."
-                });
-            }
-
-            var ok = BCrypt.Net.BCrypt.Verify(password, user.PasswordHash);
-            //samma felmeddelande oavsett vad som var fel för att inte läcka onödig auth-info
-            if (!ok)
+            // Perform password work for unknown/passwordless accounts as well.
+            var hash = string.IsNullOrWhiteSpace(user?.PasswordHash) ? DummyPasswordHash : user.PasswordHash;
+            var validPassword = BCrypt.Net.BCrypt.Verify(password, hash);
+            if (user == null || string.IsNullOrWhiteSpace(user.PasswordHash) || !validPassword)
             {
                 return Unauthorized(new ErrorMessageResponseDto
                 {
