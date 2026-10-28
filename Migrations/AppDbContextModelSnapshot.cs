@@ -111,6 +111,16 @@ namespace Zullo.Api.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DeliveryKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<long>("DeliverySequence")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("DeliverySequence"));
+
                     b.Property<Guid>("FromUserId")
                         .HasColumnType("uuid");
 
@@ -127,9 +137,21 @@ namespace Zullo.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DeliverySequence")
+                        .IsUnique();
+
                     b.HasIndex("ToUserId", "CreatedAtUtc");
 
+                    b.HasIndex("FromUserId", "ToUserId", "ClientMessageId")
+                        .HasFilter("\"DeliveryKey\" IS NULL");
+
                     b.HasIndex("FromUserId", "ToUserId", "CreatedAtUtc");
+
+                    b.HasIndex("FromUserId", "ToUserId", "DeliveryKey")
+                        .IsUnique()
+                        .HasFilter("\"DeliveryKey\" IS NOT NULL");
+
+                    b.HasIndex("FromUserId", "ToUserId", "DeliverySequence");
 
                     b.ToTable("Messages");
                 });

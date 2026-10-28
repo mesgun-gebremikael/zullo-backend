@@ -75,6 +75,7 @@ public class MatchesController : ControllerBase
         // 3) Hämta profiler för de andra användarna (SQL slutar här)
         var profilesRaw = await _db.Profiles.AsNoTracking()
             .Where(p => otherIds.Contains(p.UserId))
+            .Select(p => new { p.UserId, p.DisplayName, p.Age, p.PhotoUrls })
             .ToListAsync();
 
         // 4) Hämta senaste meddelande per otherUserId + hasUnread
@@ -89,12 +90,12 @@ public class MatchesController : ControllerBase
                 otherUserId = g.Key,
 
                 lastMessageText = g
-                     .OrderByDescending(x => x.CreatedAtUtc)
+                     .OrderByDescending(x => x.DeliverySequence)
                      .Select(x => x.Text)
                      .FirstOrDefault(),
 
                 lastMessageAtUtc = g
-                     .OrderByDescending(x => x.CreatedAtUtc)
+                     .OrderByDescending(x => x.DeliverySequence)
                      .Select(x => (DateTime?)x.CreatedAtUtc)
                      .FirstOrDefault(),
 
