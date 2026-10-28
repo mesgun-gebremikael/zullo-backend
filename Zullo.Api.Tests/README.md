@@ -28,3 +28,5 @@ Nekade meddelandeanrop kontrolleras också mot databasen: inga nya meddelanden e
 Se [reproducerbara kommandon, resultat och införande](../docs/chat-verification.md). GitHub Actions kör enhetstester och den korta PostgreSQL-kontrollen utan produktionshemligheter.
 
 `BrowserChatAuthenticationTests` provar webbläsarens SignalR-tokenformat och begränsningen till chattens sökväg. `verify-flutter-interop.sh /path/to/zullo-frontend` kör ett separat integrationstest mellan verkliga Flutter-tjänster och lokal Kestrel/PostgreSQL; se [kontrollen efter merge](../docs/post-merge-verification.md).
+
+`DatabaseConnectionTests` provar Render-URL:er, kodade lösenord, TLS-inställningar och fel utan credential-läckage. `verify-container.py` provar den riktiga publicerade servern med isolerade Docker-resurser; se [Render-testmiljön](../docs/render-staging.md).

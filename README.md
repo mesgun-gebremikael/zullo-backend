@@ -54,3 +54,7 @@ I utvecklingsläge finns Swagger på `/swagger`. SignalR-hubben finns på `/hubs
 Projektet körs i utvecklingsmiljö och är inte publicerat som en färdig tjänst.
 
 **Utvecklare:** Mesgun Gebremikael
+
+## Render-testmiljö
+
+Se [förberedelse, kostnadsgranskning och separat staging](docs/render-staging.md). Docker-/Render-filerna skapar inga resurser på egen hand. Ingen produktion eller befintlig BookQuoteApp ska ändras.

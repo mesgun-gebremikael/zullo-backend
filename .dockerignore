@@ -1,0 +1,16 @@
+.git
+.github
+.vs
+**/bin
+**/obj
+Zullo.Api.Tests
+appsettings*.json
+*.csproj.user
+**/*key*.json
+**/GoogleService-Info.plist
+**/*.p8
+**/*.p12
+**/*.pem
+**/*.env
+**/*.log
+.env*
