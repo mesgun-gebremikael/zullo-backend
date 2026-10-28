@@ -108,11 +108,14 @@ try
             services.AddSignalR();
             services.AddSingleton<IUserIdProvider, NameIdentifierUserIdProvider>();
             services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
+                {
+                o.Events = new JwtBearerEvents { OnMessageReceived = ChatBearerAuthentication.ReadHubToken };
                 o.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = false, ValidateAudience = false, ValidateLifetime = true,
                     ValidateIssuerSigningKey = true, IssuerSigningKey = new SymmetricSecurityKey(key), ClockSkew = TimeSpan.Zero
-                });
+                };
+            });
             services.AddAuthorization();
         }).Configure(app =>
         {
@@ -131,18 +134,18 @@ try
         client.Timeout = TimeSpan.FromSeconds(60);
         return client;
     }
-    HubConnection Socket(Guid user, bool authenticated = true)
+    HubConnection Socket(Guid user, bool authenticated = true, bool queryToken = false)
     {
         var token = Token(user);
-        return new HubConnectionBuilder().WithUrl("http://localhost/hubs/chat", o =>
+        return new HubConnectionBuilder().WithUrl("http://localhost/hubs/chat" + (queryToken ? "?access_token=" + token : ""), o =>
         {
             o.Transports = HttpTransportType.WebSockets;
             o.HttpMessageHandlerFactory = _ => server.CreateHandler();
-            if (authenticated) o.AccessTokenProvider = () => Task.FromResult<string?>(token);
+            if (authenticated && !queryToken) o.AccessTokenProvider = () => Task.FromResult<string?>(token);
             o.WebSocketFactory = async (context, cancellation) =>
             {
                 var ws = server.CreateWebSocketClient();
-                if (authenticated) ws.ConfigureRequest = request => request.Headers.Authorization = "Bearer " + token;
+                if (authenticated && !queryToken) ws.ConfigureRequest = request => request.Headers.Authorization = "Bearer " + token;
                 return await ws.ConnectAsync(context.Uri, cancellation);
             };
         }).Build();
@@ -159,6 +162,10 @@ try
     var receipt = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
     peer.On<JsonElement>("MessagesRead", value => receipt.TrySetResult(value));
     sockets.Add(peer); await peer.StartAsync();
+    var browser = Socket(concurrentSender.Id, queryToken: true);
+    var browserMessage = new TaskCompletionSource<MessageDto>(TaskCreationOptions.RunContinuationsAsynchronously);
+    browser.On<MessageDto>("MessageReceived", value => browserMessage.TrySetResult(value));
+    sockets.Add(browser); await browser.StartAsync();
     var forbiddenEvents = 0;
     var third = Socket(outsider.Id);
     third.On<MessageDto>("MessageReceived", _ => Interlocked.Increment(ref forbiddenEvents));
@@ -177,6 +184,7 @@ try
         return (await reply.Content.ReadFromJsonAsync<MessageDto>())!;
     }
     var concurrent = await Task.WhenAll(Enumerable.Range(0, 32).Select(_ => Deliver(a, recipient.Id, "parallel-key", "One delivery")));
+    Check((await browserMessage.Task.WaitAsync(TimeSpan.FromSeconds(10))).Id == concurrent[0].Id, "Browser query-authenticated socket missed its own message");
     Check(concurrent.Select(m => m.Id).Distinct().Count() == 1, "Concurrent replay produced multiple message IDs");
     await using (var db = new AppDbContext(options))
         Check(await db.Messages.CountAsync(m => m.ClientMessageId == "parallel-key") == 1, "Concurrent replay inserted duplicates");
