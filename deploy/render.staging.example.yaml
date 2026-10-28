@@ -1,0 +1,36 @@
+# REVIEW ONLY. Applying this Blueprint creates PAID resources.
+# Do not apply until the owner has approved current Render pricing and secret setup.
+services:
+  - type: web
+    name: zullo-staging-api
+    runtime: docker
+    repo: https://github.com/mesgun-gebremikael/zullo-backend
+    branch: main
+    region: frankfurt
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    autoDeployTrigger: 'off'
+    healthCheckPath: /health/ready
+    # Runs only as part of an explicitly requested deploy, before traffic is switched.
+    preDeployCommand: ./efbundle
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Staging
+      - key: ConnectionStrings__Default
+        fromDatabase:
+          name: zullo-staging-db
+          property: connectionString
+      - key: Jwt__Key
+        generateValue: true
+      - key: Firebase__CredentialsPath
+        value: /etc/secrets/firebase-key.json
+# Add the Firebase ADMIN service-account file as a Render Secret File before deploying.
+# Do not use the public iPhone GoogleService-Info.plist or put admin keys in Git.
+databases:
+  - name: zullo-staging-db
+    databaseName: zullo_staging
+    user: zullo_staging
+    region: frankfurt
+    plan: 0.1c-256mb
+    diskSizeGB: 5
+    ipAllowList: []

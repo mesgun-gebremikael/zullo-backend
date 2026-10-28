@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Zullo.Api.Data;
@@ -25,7 +26,7 @@ namespace Zullo.Api
             // Firebase init
             FirebaseApp.Create(new AppOptions()
             {
-                Credential = GoogleCredential.FromFile("firebase-key.json")
+                Credential = CredentialFactory.FromFile<ServiceAccountCredential>(builder.Configuration["Firebase:CredentialsPath"] ?? "firebase-key.json").ToGoogleCredential()
             });
 
 
@@ -85,7 +86,7 @@ namespace Zullo.Api
 
             // Database (PostgreSQL)
             builder.Services.AddDbContext<AppDbContext>(options =>
-                options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+                options.UseNpgsql(DatabaseConnection.Resolve(builder.Configuration)));
 
             builder.Services.AddScoped<Zullo.Api.Services.LikeLimitService>();
             builder.Services.AddScoped<UserRelationService>();
@@ -115,6 +116,7 @@ namespace Zullo.Api
                     };
                 });
 
+            builder.Services.AddHealthChecks().AddCheck<DatabaseReadinessCheck>("database", tags: new[] { "ready" }, timeout: TimeSpan.FromSeconds(5));
             builder.Services.AddAuthorization();
 
             builder.Services.AddSignalR();
@@ -204,6 +206,8 @@ namespace Zullo.Api
             app.UseAuthentication();   // <--- NY
             app.UseAuthorization();
 
+            app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+            app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
             app.MapControllers();
             app.MapHub<ChatHub>("/hubs/chat");
 

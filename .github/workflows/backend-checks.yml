@@ -30,3 +30,10 @@ jobs:
           dotnet-version: '8.0.427'
       - run: dotnet test Zullo.Api.Tests/Zullo.Api.Tests.csproj -c Release
       - run: bash Zullo.Api.Tests/verify-chat-postgres.sh
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: docker build --tag zullo-staging-check:local .
+      - run: python3 Zullo.Api.Tests/verify-container.py
