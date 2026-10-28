@@ -18,4 +18,23 @@ fi
 : "${Jwt__Key:?Set a separate random Jwt__Key for this environment.}"
 export ASPNETCORE_URLS="http://0.0.0.0:$service_port"
 export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Staging}"
+# Free Render services have no pre-deploy command. This is an explicit,
+# single-instance test-environment option; it is never enabled by default.
+case "${ZULLO_STAGING_MIGRATE_ON_START:-false}" in
+  false) ;;
+  true)
+    if [ "$ASPNETCORE_ENVIRONMENT" != "Staging" ] || [ "${Deployment__ExpectedDatabaseName:-}" != "zullo_staging" ]; then
+      echo 'Startup migration is allowed only for Staging with expected database zullo_staging.' >&2
+      exit 1
+    fi
+    credentials_path="${Firebase__CredentialsPath:-/app/firebase-key.json}"
+    if [ ! -r "$credentials_path" ]; then
+      echo 'Configure the Firebase Admin Secret File before enabling staging startup migration.' >&2
+      exit 1
+    fi
+    echo 'Applying explicitly enabled migrations for isolated Staging before server startup.'
+    /app/efbundle
+    ;;
+  *) echo 'ZULLO_STAGING_MIGRATE_ON_START must be true or false.' >&2; exit 1 ;;
+esac
 exec dotnet /app/Zullo.Api.dll

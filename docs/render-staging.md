@@ -6,13 +6,15 @@ Förbereder serverpaket och inställningar. Inga Render-resurser skapas, inga be
 
 `deploy/render.staging.example.yaml` är ett granskningsunderlag, inte en instruktion att klicka på Deploy nu. Den ligger inte som en automatiskt upptäckt render.yaml i roten. Att faktiskt tillämpa den skapar **betalda resurser**. Ägaren måste först godkänna aktuellt pris för webbtjänsten, databasen och lagringen i Render. Bekräfta också att de valda resursnamnen inte redan används av något annat projekt.
 
+För en kort gratis testmiljö finns ett separat, uttryckligt [gratis-stagingläge](render-free-staging.md). Det betalda Blueprint-exemplet nedan ska inte användas för att skapa gratisresurser.
+
 ## Paketet
 
 Docker bygger .NET-appen och ett separat migrationsverktyg (`/app/efbundle`). Slutbilden använder ASP.NET-runtime, kör som icke-root och innehåller inte utvecklingsdatabasens anslutning, JWT-nyckel, Firebase-tjänstekonto, SDK eller testkod. En ny minimal appsettings.json innehåller endast loggnivåer och AllowedHosts.
 
 Entrypoint lyssnar på Render PORT, som standard 10000. Staging använder inte utvecklingssidornas Swagger eller detaljerade felmeddelanden. Docker fungerar med både befintlig Npgsql-anslutningssträng och Render-formatet `postgresql://...`. URL-uppgifter avkodas genom NpgsqlConnectionStringBuilder så att till exempel semikolon i lösenord inte blir extra anslutningsinställningar. Render-intern URL får TLS-läget Require som standard; det är rätt för dess självsignerade interna certifikat. Övriga URL-parametrar än sslmode avvisas. Lokala anslutningssträngar ändras inte.
 
-`/health/live` visar att processen kör. `/health/ready` kräver nåbar databas och att alla EF-migrationer är införda. Svaret innehåller inga lösenord, interna SQL-fel eller användaruppgifter. Hälsokontrollen har en femsekundersgräns. Varken appstart eller health-anrop uppdaterar databasen.
+`/health/live` visar att processen kör. `/health/ready` kräver nåbar databas och att alla EF-migrationer är införda. Svaret innehåller inga lösenord, interna SQL-fel eller användaruppgifter. Hälsokontrollen har en femsekundersgräns. Varken standardstarten eller health-anrop uppdaterar databasen. Det separata gratisläget kräver uttrycklig aktivering och har egna skydd enligt den länkade guiden.
 
 ## Resurser att godkänna senare
 

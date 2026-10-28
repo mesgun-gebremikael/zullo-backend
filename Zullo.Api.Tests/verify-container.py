@@ -72,12 +72,17 @@ with tempfile.TemporaryDirectory(prefix='zullo-container-') as temporary:
             time.sleep(.3)
         else:
             raise AssertionError('Isolated PostgreSQL did not start')
-        command('docker', 'create', '--name', api, '--network', network,
-                '-p', '127.0.0.1::12345', '--env-file', str(env), image)
-        command('docker', 'cp', str(fixture), api + ':/tmp/synthetic-firebase.json')
-        command('docker', 'start', api)
-        binding = command('docker', 'port', api, '12345/tcp').stdout.strip()
-        base = 'http://' + binding
+        def start_api(*extra_env):
+            arguments = ['docker', 'create', '--name', api, '--network', network,
+                         '-p', '127.0.0.1::12345', '--env-file', str(env)]
+            for value in extra_env:
+                arguments += ['-e', value]
+            command(*arguments, image)
+            command('docker', 'cp', str(fixture), api + ':/tmp/synthetic-firebase.json')
+            command('docker', 'start', api)
+            return 'http://' + command('docker', 'port', api, '12345/tcp').stdout.strip()
+
+        base = start_api()
         until(lambda: request(base, '/health/live'), 200)
         until(lambda: request(base, '/health/ready'), 503)
         assert request(base, '/messages/thread-page')[0] == 401
@@ -111,10 +116,53 @@ with tempfile.TemporaryDirectory(prefix='zullo-container-') as temporary:
         command('docker', 'stop', '--time', '2', postgres)
         until(lambda: request(base, '/health/ready'), 503)
         assert request(base, '/health/live')[0] == 200
-        print('PASS: non-root container, custom PORT, no baked development secrets, real startup/JWT/auth, readiness before/after migration, repeat migration, database outage.')
+        # Explicit free-tier mode: migrate before listening, and keep data on a cold restart.
+        command('docker', 'rm', '-f', api)
+        command('docker', 'start', postgres)
+        for _ in range(100):
+            if command('docker', 'exec', postgres, 'pg_isready', '-U', 'zullo', '-d', 'zullo_staging', check=False).returncode == 0:
+                break
+            time.sleep(.3)
+        command('docker', 'exec', postgres, 'psql', '-U', 'zullo', '-d', 'postgres', '-c', 'DROP DATABASE zullo_staging WITH (FORCE)')
+        command('docker', 'exec', postgres, 'psql', '-U', 'zullo', '-d', 'postgres', '-c', 'CREATE DATABASE zullo_staging')
+        for overrides, expected_error in [
+            (['ASPNETCORE_ENVIRONMENT=Production'], 'only for Staging'),
+            (['Deployment__ExpectedDatabaseName=other_project'], 'only for Staging'),
+            ([], 'Firebase Admin Secret File'),
+        ]:
+            arguments = ['docker', 'run', '--rm', '--network', network, '--env-file', str(env),
+                         '-e', 'ZULLO_STAGING_MIGRATE_ON_START=true']
+            for value in overrides:
+                arguments += ['-e', value]
+            rejected = command(*arguments, image, check=False)
+            assert rejected.returncode != 0 and expected_error in rejected.stderr, 'Unsafe startup migration must be refused'
+        base = start_api('ZULLO_STAGING_MIGRATE_ON_START=true')
+        until(lambda: request(base, '/health/ready'), 200)
+        assert request(base, '/api/auth/register', credentials)[0] == 200
+        command('docker', 'restart', api)
+        base = 'http://' + command('docker', 'port', api, '12345/tcp').stdout.strip()
+        until(lambda: request(base, '/health/ready'), 200)
+        assert request(base, '/api/auth/login', credentials)[0] == 200, 'Cold restart must preserve the test account'
+        command('docker', 'stop', '--time', '2', postgres)
+        command('docker', 'restart', api)
+        for _ in range(100):
+            if command('docker', 'inspect', '-f', '{{.State.Running}}', api).stdout.strip() == 'false':
+                break
+            time.sleep(.3)
+        else:
+            raise AssertionError('Migration failure must stop server startup')
+        assert command('docker', 'inspect', '-f', '{{.State.ExitCode}}', api).stdout.strip() != '0'
+        print('PASS: non-root container, custom PORT, no baked development secrets, real startup/JWT/auth, readiness before/after migration, repeat migration, database outage; opt-in free staging startup, production/wrong-target/missing-key guards, cold restart and failure before listening.')
     except Exception:
-        # Avoid logging env files, private keys, tokens or complete container logs.
         print('Container check failed; temporary resources will be removed.')
+        diagnostic = command('docker', 'logs', '--tail', '30', api, check=False)
+        safe_log = diagnostic.stdout + diagnostic.stderr
+        for line in env.read_text().splitlines():
+            if line.startswith('Jwt__Key='):
+                safe_log = safe_log.replace(line.split('=', 1)[1], '[redacted]')
+        safe_log = safe_log.replace(private_key.read_text(), '[synthetic private key redacted]')
+        print(safe_log)
+
         raise
     finally:
         for name in [api, postgres]:
