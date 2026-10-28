@@ -1,4 +1,4 @@
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -247,8 +247,10 @@ public class ChatAuthorizationTests
                     services.AddScoped<PushNotificationService>();
                     services.AddSingleton<MessageSendLimiter>();
                     services.AddSignalR();
+                    services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, NameIdentifierUserIdProvider>();
                     services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
                     {
+                        o.Events = new JwtBearerEvents { OnMessageReceived = ChatBearerAuthentication.ReadHubToken };
                         o.TokenValidationParameters = new TokenValidationParameters
                         {
                             ValidateIssuer = false, ValidateAudience = false, ValidateLifetime = true,
@@ -265,7 +267,7 @@ public class ChatAuthorizationTests
                     builder.UseRateLimiter();
                     builder.UseAuthentication();
                     builder.UseAuthorization();
-                    builder.UseEndpoints(e => e.MapControllers());
+                    builder.UseEndpoints(e => { e.MapControllers(); e.MapHub<Zullo.Api.Hubs.ChatHub>("/hubs/chat"); });
                 })).StartAsync();
             return app;
         }
