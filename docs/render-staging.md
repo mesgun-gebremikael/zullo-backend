@@ -33,6 +33,7 @@ Konfigurera i den **nya Zullo-tjänsten**, inte i BookQuoteApp:
 |---|---|
 | ASPNETCORE_ENVIRONMENT | Staging |
 | ConnectionStrings__Default | Den nya stagingdatabasens **Internal Database URL**. Blueprint-exemplet kopplar den automatiskt från just den databasen. |
+| Deployment__ExpectedDatabaseName | `zullo_staging`. Både servern och migrationsverktyget stoppar om anslutningen anger ett annat databasnamn. Det minskar risken för att klistra in bibliotekets anslutning av misstag. |
 | Jwt__Key | Ny, slumpmässig hemlighet separat från lokal utveckling och framtida produktion. Blueprint kan generera den. Ändring loggar ut befintliga staging-sessioner. |
 | Firebase__CredentialsPath | `/etc/secrets/firebase-key.json` |
 | Render Secret File | Filnamn `firebase-key.json`, innehåll från rätt Firebase **Admin-tjänstekonto**. |

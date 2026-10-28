@@ -10,7 +10,12 @@ public static class DatabaseConnection
         var value = configuration.GetConnectionString("Default");
         if (string.IsNullOrWhiteSpace(value))
             throw new InvalidOperationException("ConnectionStrings:Default is required.");
-        return Normalize(value);
+        var normalized = Normalize(value);
+        var expectedDatabase = configuration["Deployment:ExpectedDatabaseName"];
+        if (!string.IsNullOrWhiteSpace(expectedDatabase) &&
+            new NpgsqlConnectionStringBuilder(normalized).Database != expectedDatabase)
+            throw new InvalidOperationException("Database does not match Deployment:ExpectedDatabaseName.");
+        return normalized;
     }
 
     public static string Normalize(string value)

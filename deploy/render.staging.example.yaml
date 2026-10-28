@@ -20,6 +20,8 @@ services:
         fromDatabase:
           name: zullo-staging-db
           property: connectionString
+      - key: Deployment__ExpectedDatabaseName
+        value: zullo_staging
       - key: Jwt__Key
         generateValue: true
       - key: Firebase__CredentialsPath

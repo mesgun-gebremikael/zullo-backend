@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='zullo-container-') as temporary:
     fixture.chmod(0o644) # Test-only credential readable by the container's non-root user.
     env = root / 'server.env'
     env.write_text('\n'.join([
-        'ASPNETCORE_ENVIRONMENT=Staging', 'PORT=12345',
+        'ASPNETCORE_ENVIRONMENT=Staging', 'PORT=12345', 'Deployment__ExpectedDatabaseName=zullo_staging',
         f'ConnectionStrings__Default=postgresql://zullo:test-only@{postgres}:5432/zullo_staging?sslmode=disable',
         'Jwt__Key=' + base64.b64encode(secrets.token_bytes(48)).decode(),
         'Firebase__CredentialsPath=/tmp/synthetic-firebase.json',
@@ -90,6 +90,13 @@ with tempfile.TemporaryDirectory(prefix='zullo-container-') as temporary:
         assert command('docker', 'exec', api, 'test', '!', '-f', '/usr/local/share/ca-certificates/build-proxy.crt', check=False).returncode == 0
         assert command('docker', 'exec', api, 'test', '!', '-f', '/app/appsettings.Development.json', check=False).returncode == 0
         assert command('docker', 'exec', api, 'test', '!', '-f', '/app/firebase-key.json', check=False).returncode == 0
+        wrong_target = root / 'wrong-target.env'
+        wrong_target.write_text(env.read_text().replace('Deployment__ExpectedDatabaseName=zullo_staging',
+                                                       'Deployment__ExpectedDatabaseName=different_project_db'))
+        wrong_target.chmod(0o600)
+        rejected = command('docker', 'run', '--rm', '--network', network, '--env-file', str(wrong_target), image, 'migrate', check=False)
+        assert rejected.returncode != 0, 'Migration must reject the wrong database target'
+        assert request(base, '/health/ready')[0] == 503, 'Rejected migration must not upgrade the database'
         for migration_command in ['migrate', '/app/efbundle']:
             command('docker', 'run', '--rm', '--network', network, '--env-file', str(env), image, migration_command)
         until(lambda: request(base, '/health/ready'), 200)

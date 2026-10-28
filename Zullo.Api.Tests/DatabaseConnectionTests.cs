@@ -59,6 +59,20 @@ public class DatabaseConnectionTests
         Assert.DoesNotContain(url, error.ToString());
     }
 
+    [Theory]
+    [InlineData("zullo_staging", true)]
+    [InlineData("unrelated_library", false)]
+    public void ExpectedDatabaseGuardPreventsMigrationsAgainstAnUnrelatedDatabase(string database, bool allowed)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Default"] = $"postgres://user:test-only@host/{database}",
+            ["Deployment:ExpectedDatabaseName"] = "zullo_staging"
+        }).Build();
+        if (allowed) Assert.Contains("Database=zullo_staging", DatabaseConnection.Resolve(configuration));
+        else Assert.Throws<InvalidOperationException>(() => DatabaseConnection.Resolve(configuration));
+    }
+
     [Fact]
     public void MissingDatabaseConfigurationFailsClearly()
     {
