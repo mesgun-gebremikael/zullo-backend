@@ -224,7 +224,7 @@ public class ChatAuthorizationTests
         public Guid C { get; } = Guid.NewGuid();
         public AppDbContext Db() => new(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connection).Options);
 
-        public static async Task<TestApp> Start(string environment = "Production")
+        public static async Task<TestApp> Start(string environment = "Production", Action<IServiceCollection>? configure = null)
         {
             var app = new TestApp();
             await app._connection.OpenAsync();
@@ -245,6 +245,7 @@ public class ChatAuthorizationTests
                     services.AddScoped<UserRelationService>();
                     services.AddScoped<LikeLimitService>();
                     services.AddScoped<PushNotificationService>();
+                    services.AddSingleton<MessageSendLimiter>();
                     services.AddSignalR();
                     services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
                     {
@@ -257,6 +258,7 @@ public class ChatAuthorizationTests
                     });
                     services.AddAuthorization();
                     services.AddAuthenticationProtection();
+                    configure?.Invoke(services);
                 }).Configure(builder =>
                 {
                     builder.UseRouting();

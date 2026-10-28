@@ -11,14 +11,14 @@ namespace Zullo.Api.Services
     string senderName,
     string messageText,
     string? senderPhotoUrl,
-    string recipientUserId)
+    string recipientUserId, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(deviceToken))
                 return;
 
             var message = CreateMessage(deviceToken, senderUserId, senderName,
                 messageText, senderPhotoUrl, recipientUserId);
-            await FirebaseMessaging.DefaultInstance.SendAsync(message);
+            await FirebaseMessaging.DefaultInstance.SendAsync(message, cancellationToken);
         }
 
         internal static Message CreateMessage(string deviceToken, string senderUserId,

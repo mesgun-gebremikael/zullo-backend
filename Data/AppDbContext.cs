@@ -18,6 +18,28 @@ public class AppDbContext : DbContext
 
 
 
+    // SQLite test hosts emulate the production database's generated sequence.
+    private void AssignLocalMessageSequences()
+    {
+        if (Database.IsNpgsql()) return;
+        var added = ChangeTracker.Entries<Message>().Where(e => e.State == EntityState.Added && e.Entity.DeliverySequence == 0).ToList();
+        if (added.Count == 0) return;
+        var next = Messages.Max(m => (long?)m.DeliverySequence) ?? 0;
+        foreach (var entry in added) entry.Entity.DeliverySequence = ++next;
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        AssignLocalMessageSequences();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
+    public override int SaveChanges()
+    {
+        AssignLocalMessageSequences();
+        return base.SaveChanges();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         //kopplar Dbset Users -> tabell "user"
@@ -167,6 +189,14 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Message>(e =>
         {
             e.HasKey(x => x.Id);
+            if (Database.IsNpgsql()) e.Property(x => x.DeliverySequence).UseIdentityByDefaultColumn();
+            else e.Property(x => x.DeliverySequence).ValueGeneratedNever();
+            e.HasIndex(x => x.DeliverySequence).IsUnique();
+            e.HasIndex(x => new { x.FromUserId, x.ToUserId, x.DeliverySequence });
+            e.HasIndex(x => new { x.FromUserId, x.ToUserId, x.ClientMessageId }).HasFilter("\"DeliveryKey\" IS NULL");
+            e.Property(x => x.DeliveryKey).HasMaxLength(100);
+            e.HasIndex(x => new { x.FromUserId, x.ToUserId, x.DeliveryKey })
+                .IsUnique().HasFilter("\"DeliveryKey\" IS NOT NULL");
 
             e.Property(x => x.Text)
                 .IsRequired()

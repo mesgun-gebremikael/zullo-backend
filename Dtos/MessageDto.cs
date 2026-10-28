@@ -4,6 +4,7 @@ public class MessageDto
 {
     //  Unikt ID från databasen (backend skapar detta)
     public Guid Id { get; set; }
+    public long Sequence { get; set; }
 
     //  Vem skickade meddelandet
     public Guid FromUserId { get; set; }

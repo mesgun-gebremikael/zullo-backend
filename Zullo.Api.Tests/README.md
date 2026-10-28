@@ -20,3 +20,9 @@ Testerna kontrollerar:
 - Att en matchning inte ger tillgång till motpartens andra konversationer.
 
 Nekade meddelandeanrop kontrolleras också mot databasen: inga nya meddelanden eller läsmarkeringar får sparas. De två befintliga matchningstesterna bevaras.
+
+## Leveranssäkerhet och PostgreSQL
+
+`MessageReliabilityTests` kompletterar behörighetstesterna med omsändning, innehållskonflikter, sändningskvot, sidindelning och precisa läskvitton. `verify-chat-postgres.sh` kontrollerar även migrering och samtidighet mot en separat riktig PostgreSQL-databas samt anslutningar genom SignalR-protokollet.
+
+Se [reproducerbara kommandon, resultat och införande](../docs/chat-verification.md). GitHub Actions kör enhetstester och den korta PostgreSQL-kontrollen utan produktionshemligheter.

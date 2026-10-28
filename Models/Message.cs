@@ -12,6 +12,11 @@ public class Message
     //  Kopplar frontend message till backend message
     public string ClientMessageId { get; set; } = "";
 
+    // Only new deliveries receive a key. Legacy rows remain untouched.
+    public long DeliverySequence { get; set; }
+
+    public string? DeliveryKey { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? ReadAtUtc { get; set; }
 }

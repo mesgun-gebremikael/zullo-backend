@@ -22,6 +22,7 @@ public class MessagesController : ControllerBase
     private readonly PushNotificationService _pushNotificationService;
     private readonly ILogger<MessagesController> _logger;
     private readonly IHubContext<ChatHub> _chatHub;
+    private readonly MessageSendLimiter _sendLimiter;
 
 
 
@@ -30,13 +31,15 @@ public class MessagesController : ControllerBase
      UserRelationService userRelationService,
      PushNotificationService pushNotificationService,
      ILogger<MessagesController> logger,
-     IHubContext<ChatHub> chatHub)
+     IHubContext<ChatHub> chatHub,
+     MessageSendLimiter sendLimiter)
     {
         _db = db;
         _userRelationService = userRelationService;
         _pushNotificationService = pushNotificationService;
         _logger = logger;
         _chatHub = chatHub;
+        _sendLimiter = sendLimiter;
     }
 
 
@@ -49,7 +52,7 @@ public class MessagesController : ControllerBase
     [HttpGet("thread")]
     public async Task<IActionResult> GetThread([FromQuery] Guid otherUserId)
     {
-        var meId = CurrentUserService.GetUserIdOrThrow(User);
+        if (!CurrentUserService.TryGetUserId(User, out var meId)) return Unauthorized();
 
         var isBlocked = await _userRelationService.IsBlockedAsync(meId, otherUserId);
         if (isBlocked)
@@ -73,10 +76,11 @@ public class MessagesController : ControllerBase
             .Where(m =>
                 (m.FromUserId == meId && m.ToUserId == otherUserId) ||
                 (m.FromUserId == otherUserId && m.ToUserId == meId))
-            .OrderBy(m => m.CreatedAtUtc)
+            .OrderBy(m => m.DeliverySequence)
            .Select(m => new MessageDto
            {
                Id = m.Id,
+               Sequence = m.DeliverySequence,
                FromUserId = m.FromUserId,
                ToUserId = m.ToUserId,
                Text = m.Text,
@@ -95,7 +99,7 @@ public class MessagesController : ControllerBase
     [HttpPost("send")]
     public async Task<IActionResult> Send([FromBody] SendMessageDto dto)
     {
-        var meId = CurrentUserService.GetUserIdOrThrow(User);
+        if (!CurrentUserService.TryGetUserId(User, out var meId)) return Unauthorized();
 
         var isBlocked = await _userRelationService.IsBlockedAsync(meId, dto.ToUserId);
         if (isBlocked)
@@ -116,23 +120,25 @@ public class MessagesController : ControllerBase
             });
         }
 
-        // Anti-spam: max 3 meddelanden per 2 sekunder per user
-        var windowStart = DateTime.UtcNow.AddSeconds(-2);
-
-        var recentMessageCount = await _db.Messages
-            .CountAsync(m =>
-                m.FromUserId == meId &&
-                m.CreatedAtUtc >= windowStart
-            );
-
-        if (recentMessageCount >= 3)
+        await using var deliveryTransaction = _db.Database.IsNpgsql()
+            ? await _db.Database.BeginTransactionAsync() : null;
+        if (deliveryTransaction != null)
         {
-            return BadRequest(new ErrorMessageResponseDto
-            {
-                Message = "You're sending messages too fast."
-            });
+            var pair = string.CompareOrdinal(meId.ToString(), dto.ToUserId.ToString()) < 0
+                ? $"{meId}:{dto.ToUserId}" : $"{dto.ToUserId}:{meId}";
+            await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({pair}, 0))");
+            if (await _userRelationService.IsBlockedAsync(meId, dto.ToUserId) ||
+                !await _userRelationService.IsMatchedAsync(meId, dto.ToUserId))
+                return StatusCode(403, new ErrorMessageResponseDto { Message = "You cannot access this conversation." });
         }
 
+        var existing = await FindDelivery(meId, dto.ToUserId, dto.ClientMessageId);
+        if (existing != null) return Replay(existing, dto.Text.Trim());
+        if (!_sendLimiter.TryAcquire(meId, out var retryAfter))
+        {
+            Response.Headers.RetryAfter = AuthenticationProtection.RetrySeconds(retryAfter);
+            return StatusCode(429, new ErrorMessageResponseDto { Message = "You're sending messages too fast." });
+        }
 
         var trimmedText = dto.Text.Trim();
 
@@ -142,17 +148,34 @@ public class MessagesController : ControllerBase
             ToUserId = dto.ToUserId,
             Text = trimmedText,
             ClientMessageId = dto.ClientMessageId,
+            DeliveryKey = dto.ClientMessageId,
             CreatedAtUtc = DateTime.UtcNow
         };
 
 
         _db.Messages.Add(msg);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+            if (deliveryTransaction != null) await deliveryTransaction.CommitAsync();
+        }
+        catch (DbUpdateException)
+        {
+            if (deliveryTransaction != null) await deliveryTransaction.RollbackAsync();
+            _db.Entry(msg).State = EntityState.Detached;
+            var winner = await FindDelivery(meId, dto.ToUserId, dto.ClientMessageId);
+            if (winner != null) return Replay(winner, trimmedText);
+            throw;
+        }
 
-        await _chatHub.Clients.User(dto.ToUserId.ToString()).SendAsync(
+        try
+        {
+        await _chatHub.Clients.Users(meId.ToString(), dto.ToUserId.ToString()).SendAsync(
      "MessageReceived",
      new
      {
+         id = msg.Id,
+         sequence = msg.DeliverySequence,
          fromUserId = meId,
          toUserId = dto.ToUserId,
          text = trimmedText,
@@ -161,7 +184,12 @@ public class MessagesController : ControllerBase
      });
 
 
-        Console.WriteLine("SKA SKICKA PUSH NU");
+        }
+        catch (Exception exception)
+        {
+            // Persistence already succeeded. Reconnection/history repairs a missed live event.
+            _logger.LogWarning(exception, "Live delivery failed for message {MessageId}", msg.Id);
+        }
 
 
         var senderProfile = await _db.Profiles
@@ -183,13 +211,13 @@ public class MessagesController : ControllerBase
             .Select(u => new { u.DeviceToken })
             .FirstOrDefaultAsync();
 
-        _logger.LogInformation("DEVICE TOKEN CHECK: {Token}", receiver?.DeviceToken);
 
-        if (receiver != null)
+
+        if (!string.IsNullOrWhiteSpace(receiver?.DeviceToken))
         {
             try
             {
-                _logger.LogInformation("PUSH TRY START");
+                using var pushTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
 
                 await _pushNotificationService.SendMessageNotificationAsync(
                     receiver.DeviceToken,
@@ -197,7 +225,7 @@ public class MessagesController : ControllerBase
                     string.IsNullOrWhiteSpace(sender) ? "Nytt meddelande" : sender,
                     trimmedText,
                     senderPhotoUrl,
-                    dto.ToUserId.ToString());
+                    dto.ToUserId.ToString(), pushTimeout.Token);
 
                 _logger.LogInformation("PUSH OK");
             }
@@ -212,6 +240,7 @@ public class MessagesController : ControllerBase
         return Ok(new MessageDto
         {
             Id = msg.Id,
+            Sequence = msg.DeliverySequence,
             FromUserId = msg.FromUserId,
             ToUserId = msg.ToUserId,
             Text = msg.Text,
@@ -226,7 +255,7 @@ public class MessagesController : ControllerBase
     [HttpPost("mark-read")]
     public async Task<IActionResult> MarkRead([FromQuery] Guid otherUserId)
     {
-        var meId = CurrentUserService.GetUserIdOrThrow(User);
+        if (!CurrentUserService.TryGetUserId(User, out var meId)) return Unauthorized();
 
         var isBlocked = await _userRelationService.IsBlockedAsync(meId, otherUserId);
         if (isBlocked)
@@ -246,39 +275,49 @@ public class MessagesController : ControllerBase
             });
         }
 
-        var toMark = await _db.Messages
-            .Where(m => m.FromUserId == otherUserId
-                        && m.ToUserId == meId
-                        && m.ReadAtUtc == null)
-            .ToListAsync();
-
-        if (toMark.Count == 0)
-        {
-            return Ok(new MarkReadResponseDto
-            {
-                Updated = 0
-            });
-        }
-
+        var cutoff = await _db.Messages.AsNoTracking()
+            .Where(m => m.FromUserId == otherUserId && m.ToUserId == meId && m.ReadAtUtc == null)
+            .MaxAsync(m => (long?)m.DeliverySequence);
+        if (cutoff == null) return Ok(new MarkReadResponseDto { Updated = 0 });
         var now = DateTime.UtcNow;
-        foreach (var m in toMark)
-            m.ReadAtUtc = now;
+        var updated = await _db.Messages
+            .Where(m => m.FromUserId == otherUserId && m.ToUserId == meId && m.ReadAtUtc == null && m.DeliverySequence <= cutoff.Value)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(m => m.ReadAtUtc, now));
 
-        await _db.SaveChangesAsync();
-
+        try
+        {
         await _chatHub.Clients.User(otherUserId.ToString()).SendAsync(
             "MessagesRead",
             new
             {
                 chatUserId = meId,
-                readAtUtc = now
+                readAtUtc = now,
+                readThroughSequence = cutoff.Value
             });
 
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Live read receipt failed");
+        }
         return Ok(new MarkReadResponseDto
         {
-            Updated = toMark.Count,
+            Updated = updated,
+            ReadThroughSequence = cutoff,
             ReadAtUtc = now
         });
 
     }
+    private Task<Message?> FindDelivery(Guid sender, Guid recipient, string key) =>
+        _db.Messages.AsNoTracking().Where(m => m.FromUserId == sender && m.ToUserId == recipient && (m.DeliveryKey == key || (m.DeliveryKey == null && m.ClientMessageId == key)))
+            .OrderBy(m => m.CreatedAtUtc).ThenBy(m => m.Id).FirstOrDefaultAsync();
+
+    private IActionResult Replay(Message message, string text) => message.Text != text
+        ? Conflict(new ErrorMessageResponseDto { Message = "This message identifier has already been used for different content." })
+        : Ok(new MessageDto
+        {
+            Id = message.Id, Sequence = message.DeliverySequence, FromUserId = message.FromUserId, ToUserId = message.ToUserId,
+            Text = message.Text, ClientMessageId = message.ClientMessageId,
+            CreatedAtUtc = message.CreatedAtUtc, ReadAtUtc = message.ReadAtUtc
+        });
 }
