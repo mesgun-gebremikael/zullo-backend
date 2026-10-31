@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the real published server in disposable Docker containers only."""
+from concurrent.futures import ThreadPoolExecutor
 import base64
 import json
 import os
@@ -108,6 +109,17 @@ with tempfile.TemporaryDirectory(prefix='zullo-container-') as temporary:
         credentials = {'email': 'synthetic@example.test', 'password': 'Test-only-long-password-123!'}
         status, body = request(base, '/api/auth/register', credentials)
         assert status == 200, 'Real container registration failed'
+        # Real PostgreSQL race: one account and no leaked token/server error for losers.
+        race_credentials = {'email': 'parallel@example.test', 'password': 'Test-only-long-password-123!'}
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(lambda _: request(base, '/api/auth/register', race_credentials), range(4)))
+        assert sorted(status for status, _ in results) == [200, 400, 400, 400], 'Parallel registration must not return 500'
+        for status, body in results:
+            if status == 400:
+                assert 'token' not in json.loads(body), 'Rejected duplicate must never receive existing account credentials'
+        rows = command('docker', 'exec', postgres, 'psql', '-U', 'zullo', '-d', 'zullo_staging',
+                       '-tAc', "SELECT count(*) FROM \"User\" WHERE \"Email\" = 'parallel@example.test'").stdout.strip()
+        assert rows == '1', 'The email uniqueness constraint must remain enabled'
         status, body = request(base, '/api/auth/login', credentials)
         assert status == 200, 'Real container login failed'
         token = json.loads(body)['token']
