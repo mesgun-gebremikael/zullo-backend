@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
+using Npgsql;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -66,7 +67,18 @@ namespace Zullo.Api.Controllers
             };
 
             _db.Users.Add(user);
-            await _db.SaveChangesAsync();
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (DbUpdateException exception) when (
+                exception.InnerException is PostgresException
+                { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_User_Email" })
+            {
+                // Another request may insert the address after AnyAsync checked it.
+                // Never return a token for that existing account.
+                return BadRequest(new ErrorMessageResponseDto { Message = "User already exists." });
+            }
 
             // Skapa token först efter att user finns och är sparad
             var token = GenerateJwt(user);
