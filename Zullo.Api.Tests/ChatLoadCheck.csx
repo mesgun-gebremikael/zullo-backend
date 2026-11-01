@@ -416,14 +416,19 @@ try
     closureSocket.On<JsonElement>("AccountClosed", value => accountClosed.TrySetResult(value));
     await closureSocket.StartAsync();
     var editDuringClosure = a.PatchAsJsonAsync("/me/profile", new { bio = "Concurrent edit" });
+    var sendDuringClosure = b.PostAsJsonAsync("/messages/send", new { toUserId = concurrentSender.Id, text = "Concurrent close", clientMessageId = "closure-race" });
     var closureResponse = await a.PostAsJsonAsync("/me/account/removal", new { password = "closure-test-password", confirm = true });
     await editDuringClosure;
+    var lateMessage = await sendDuringClosure;
+    Check(lateMessage.StatusCode is HttpStatusCode.OK or HttpStatusCode.Created or HttpStatusCode.Forbidden,
+        "Concurrent message returned an unexpected account-closure result");
     Check(closureResponse.StatusCode == HttpStatusCode.Accepted, "Account closure was not accepted");
     await accountClosed.Task.WaitAsync(TimeSpan.FromSeconds(5));
     Check((await a.GetAsync("/me/account")).StatusCode == HttpStatusCode.Unauthorized, "Old JWT could access a closed account");
     await using (var db = new AppDbContext(options)) {
         Check(await db.AccountRemovalRequests.AnyAsync(r => r.FormerUserId == concurrentSender.Id), "External asset follow-up was lost");
         Check(!await db.Profiles.AnyAsync(p => p.UserId == concurrentSender.Id), "Closed profile remained published");
+        Check(!await db.Messages.AnyAsync(m => m.FromUserId == concurrentSender.Id || m.ToUserId == concurrentSender.Id), "Concurrent message survived account closure");
     }
     Console.WriteLine("PASS: PostgreSQL pause/reactivate, account closure, durable external-asset follow-up and old JWT revocation.");
     await File.WriteAllTextAsync(Environment.GetEnvironmentVariable("ZULLO_CHAT_TEST_RESULTS") ?? "/tmp/zullo-chat-load-results.json",
