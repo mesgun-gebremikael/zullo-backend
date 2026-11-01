@@ -316,14 +316,34 @@ try
     await using (var db = new AppDbContext(options))
         Check(await db.Messages.CountAsync(m => m.DeliveryKey != null) == deliveredRows, "Bulk replay inserted additional rows");
     Check(liveMessages.Count == liveBeforeReplay && duplicateEvents == 0, "Replay produced duplicate live events");
-    await using (var db = new AppDbContext(options))
-    {
-        db.Blocks.Add(new Block { FromUserId = recipient.Id, BlockedUserId = concurrentSender.Id });
-        await db.SaveChangesAsync();
-    }
+    var blockedAtReceiver = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var blockedAtPeer = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+    receiver.On<JsonElement>("RelationChanged", value => blockedAtReceiver.TrySetResult(value));
+    peer.On<JsonElement>("RelationChanged", value => blockedAtPeer.TrySetResult(value));
+    var blockResponse = await b.PostAsJsonAsync("/blocks", new { blockedUserId = concurrentSender.Id });
+    Check(blockResponse.IsSuccessStatusCode, "Block API failed against PostgreSQL");
+    Check((await blockedAtReceiver.Task.WaitAsync(TimeSpan.FromSeconds(5))).GetProperty("otherUserId").GetGuid() == concurrentSender.Id,
+        "Blocker did not receive relationship invalidation");
+    Check((await blockedAtPeer.Task.WaitAsync(TimeSpan.FromSeconds(5))).GetProperty("otherUserId").GetGuid() == recipient.Id,
+        "Blocked user did not receive relationship invalidation");
     Check((await a.PostAsJsonAsync("/messages/send", new { toUserId = recipient.Id, text = "One delivery", clientMessageId = "parallel-key" })).StatusCode == HttpStatusCode.Forbidden,
         "Blocked replay leaked canonical message");
     Check((await a.GetAsync($"/messages/thread-page?otherUserId={recipient.Id}")).StatusCode == HttpStatusCode.Forbidden, "Blocked history was accessible");
+    var ownedBlocks = await b.GetFromJsonAsync<List<BlockedProfileDto>>("/blocks");
+    Check(ownedBlocks!.Any(row => row.UserId == concurrentSender.Id), "Blocked list omitted the blocked account");
+    await a.DeleteAsync($"/blocks/{recipient.Id}");
+    Check((await a.GetAsync($"/messages/thread-page?otherUserId={recipient.Id}")).StatusCode == HttpStatusCode.Forbidden,
+        "Blocked user removed the other account's block");
+    Check((await b.DeleteAsync($"/blocks/{concurrentSender.Id}")).IsSuccessStatusCode, "Unblock API failed");
+    Check((await a.GetAsync($"/messages/thread-page?otherUserId={recipient.Id}")).StatusCode == HttpStatusCode.Forbidden,
+        "Unblock restored the old match");
+    var likeA = await (await a.PostAsJsonAsync("/swipe/like", new { targetUserId = recipient.Id })).Content.ReadFromJsonAsync<JsonElement>();
+    Check(!likeA.GetProperty("matched").GetBoolean(), "Unblock reused an old reciprocal like");
+    var likeB = await (await b.PostAsJsonAsync("/swipe/like", new { targetUserId = concurrentSender.Id })).Content.ReadFromJsonAsync<JsonElement>();
+    Check(likeB.GetProperty("matched").GetBoolean(), "Fresh reciprocal likes did not create a new match");
+    var newHistory = await a.GetFromJsonAsync<MessagePageDto>($"/messages/thread-page?otherUserId={recipient.Id}");
+    Check(newHistory!.Messages.Count == 0, "New match resurrected old conversation");
+    Console.WriteLine("PASS: PostgreSQL block/unblock, live invalidation on both users, owned list, fresh reciprocal rematch and empty new history.");
     await File.WriteAllTextAsync(Environment.GetEnvironmentVariable("ZULLO_CHAT_TEST_RESULTS") ?? "/tmp/zullo-chat-load-results.json",
         JsonSerializer.Serialize(new { scenario = "In-process TestServer HTTP/WebSockets + real PostgreSQL; not a production capacity certification", results }, new JsonSerializerOptions { WriteIndented = true }));
     Console.WriteLine("PASS: migration, concurrent idempotency, authenticated live delivery, receipt cutoff, reconnect catchup, paging, load and blocked replay.");

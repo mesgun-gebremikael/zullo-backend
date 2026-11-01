@@ -21,6 +21,15 @@ namespace Zullo.Api.Controllers
             _db = db;
         }
 
+        [HttpGet("account")]
+        public async Task<IActionResult> GetAccount()
+        {
+            if (!CurrentUserService.TryGetUserId(User, out var me)) return Unauthorized();
+            var account = await _db.Users.AsNoTracking().Where(u => u.Id == me)
+                .Select(u => new { userId = u.Id, email = u.Email }).SingleOrDefaultAsync();
+            return account == null ? NotFound() : Ok(account);
+        }
+
         private static void MapUpsertProfileDtoToProfile(UpsertProfileDto dto, Profile profile)
         {
             if (dto.Has(nameof(dto.DisplayName))) profile.DisplayName = dto.DisplayName!.Trim();
