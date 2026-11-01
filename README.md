@@ -58,3 +58,9 @@ Projektet körs i utvecklingsmiljö och är inte publicerat som en färdig tjän
 ## Render-testmiljö
 
 Se [förberedelse, kostnadsgranskning och separat staging](docs/render-staging.md). Docker-/Render-filerna skapar inga resurser på egen hand. Ingen produktion eller befintlig BookQuoteApp ska ändras.
+
+### Standalone activity privacy
+
+`zullo_hide_activity_monthly` is a separate monthly native subscription mapped to the RevenueCat entitlement `activity_privacy`. It grants only the ability to hide online/last-active timestamps. Full `premium` also includes that ability. Server-verified expiry, store/sandbox checks, grace, refunds and reconciliation use the same authenticated provider flow. Incognito, rewind, ordinary-like limits and included consumables remain Premium-only.
+
+Apply `AddStandaloneActivityPrivacy` before deploying the matching frontend. It adds nullable `CommerceAccounts.ActivityPrivacyUntilUtc`; existing accounts get no new rights. `Commerce__Enabled` remains false by default. Prices, actual store products, sandbox purchase/restore/refund/expiry and cross-product upgrade/cancellation are still to be configured and tested; no live purchase or payout is enabled. Separate subscriptions must be managed explicitly if later buying Premium to avoid overlapping renewals.

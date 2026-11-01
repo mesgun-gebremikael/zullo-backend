@@ -20,10 +20,11 @@ public class CommerceTests
     {
         public bool Enabled => true;
         public bool Active;
+        public DateTime? ActivityUntil;
         public DateTime Period = DateTime.UtcNow.AddDays(-1);
         public List<VerifiedCredit> Credits = new();
         public Task<VerifiedCommerce> Fetch(Guid user, CancellationToken cancellation = default) => Task.FromResult(
-            new VerifiedCommerce(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Active ? DateTime.UtcNow.AddDays(20) : null, Active ? Period : null, Credits));
+            new VerifiedCommerce(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Active ? DateTime.UtcNow.AddDays(20) : null, Active ? Period : null, Credits, ActivityUntil));
     }
     static Task<TestApp> App(VerifiedStore? store = null) => TestApp.Start(configure: services => {
         if (store != null) services.AddSingleton<ICommerceVerifier>(store);
@@ -225,6 +226,37 @@ public class CommerceTests
         var matches = await b.GetFromJsonAsync<List<MatchListItemDto>>("/matches"); Assert.Null(Assert.Single(matches!).LastActivityUtc);
         await a.PostAsJsonAsync("/blocks", new { blockedUserId = app.B });
         Assert.Equal(HttpStatusCode.Forbidden, (await b.GetAsync($"/presence/{app.A}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task StandaloneActivityPrivacyHidesBothResponsesWithoutPremiumBenefitsAndExpires()
+    {
+        var store = new VerifiedStore { ActivityUntil = DateTime.UtcNow.AddDays(20) };
+        await using var app = await App(store); await Profiles(app); await app.Match();
+        using var a = app.Client(app.A); using var b = app.Client(app.B);
+        var state = await a.GetFromJsonAsync<CommerceState>("/commerce/state");
+        Assert.True(state!.CanHideActivity); Assert.False(state.Premium);
+        Assert.Equal(0, state.SuperLikes); Assert.Equal(0, state.Boosts);
+        Assert.False(state.HideActivity); // Payment never silently changes the user's visibility preference.
+        Assert.Equal(HttpStatusCode.OK, (await a.PatchAsJsonAsync("/commerce/privacy", new { hideActivity = true, incognito = false })).StatusCode);
+        Assert.Equal(HttpStatusCode.PaymentRequired, (await a.PatchAsJsonAsync("/commerce/privacy", new { hideActivity = true, incognito = true })).StatusCode);
+        await a.PostAsJsonAsync("/swipe/skip", new { targetUserId = app.C });
+        Assert.Equal(HttpStatusCode.PaymentRequired, (await a.PostAsync("/swipe/rewind", null)).StatusCode);
+        await a.PostAsync("/presence", null);
+        var presence = await b.GetFromJsonAsync<JsonElement>($"/presence/{app.A}");
+        Assert.Equal(JsonValueKind.Null, presence.GetProperty("lastActivityUtc").ValueKind);
+        Assert.Null(Assert.Single((await b.GetFromJsonAsync<List<MatchListItemDto>>("/matches"))!).LastActivityUtc);
+        Assert.Equal(HttpStatusCode.OK, (await a.PatchAsJsonAsync("/commerce/privacy", new { hideActivity = false, incognito = false })).StatusCode);
+        presence = await b.GetFromJsonAsync<JsonElement>($"/presence/{app.A}");
+        Assert.True(presence.GetProperty("online").GetBoolean());
+        await a.PatchAsJsonAsync("/commerce/privacy", new { hideActivity = true, incognito = false });
+        store.ActivityUntil = DateTime.UtcNow.AddMinutes(-1);
+        state = await (await a.PostAsync("/commerce/sync", null)).Content.ReadFromJsonAsync<CommerceState>();
+        Assert.False(state!.CanHideActivity); Assert.False(state.HideActivity);
+        presence = await b.GetFromJsonAsync<JsonElement>($"/presence/{app.A}");
+        Assert.True(presence.GetProperty("online").GetBoolean());
+        Assert.NotNull(Assert.Single((await b.GetFromJsonAsync<List<MatchListItemDto>>("/matches"))!).LastActivityUtc);
+        Assert.Equal(HttpStatusCode.PaymentRequired, (await a.PatchAsJsonAsync("/commerce/privacy", new { hideActivity = true })).StatusCode);
     }
 
     [Fact]

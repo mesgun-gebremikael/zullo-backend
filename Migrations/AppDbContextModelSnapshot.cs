@@ -53,6 +53,9 @@ namespace Zullo.Api.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ActivityPrivacyUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("BoostAllowancePeriodUtc")
                         .HasColumnType("timestamp with time zone");
 

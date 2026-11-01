@@ -123,7 +123,7 @@ public class MatchesController : ControllerBase
         {
             lastMap.TryGetValue(p.UserId, out var last);
             activity.TryGetValue(p.UserId, out var account);
-            var lastActivity = CommerceService.Premium(account) && account!.HideActivity ? null : account?.LastActivityUtc;
+            var lastActivity = CommerceService.CanHideActivity(account) && account!.HideActivity ? null : account?.LastActivityUtc;
 
             return new MatchListItemDto
             {
