@@ -15,11 +15,13 @@ public class LikesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly UserRelationService _userRelationService;
+    private readonly CommerceService? _commerce;
 
-    public LikesController(AppDbContext db, UserRelationService userRelationService)
+    public LikesController(AppDbContext db, UserRelationService userRelationService, CommerceService? commerce = null)
     {
         _db = db;
         _userRelationService = userRelationService;
+        _commerce = commerce;
     }
 
 
@@ -37,9 +39,13 @@ public class LikesController : ControllerBase
                 Message = "Invalid token."
             });
         }
+        if (_commerce != null) await _commerce.RefreshBenefitsIfSubscribed(meId);
+        var premium = CommerceService.Premium(await _db.CommerceAccounts.AsNoTracking().SingleOrDefaultAsync(a => a.UserId == meId));
+        var superIds = await _db.Likes.Where(l => l.ToUserId == meId && l.IsSuperLike).Select(l => l.FromUserId).ToListAsync();
+        // Free users may see Superlikes; ordinary incoming identities are server-gated.
         // 1️ Hämta userIds som har gillat mig
         var likedMeIds = await _db.Likes.AsNoTracking()
-            .Where(l => l.ToUserId == meId)
+            .Where(l => l.ToUserId == meId && (premium || l.IsSuperLike))
             .Select(l => l.FromUserId)
             .Distinct()
             .ToListAsync();
@@ -77,6 +83,7 @@ public class LikesController : ControllerBase
         var result = profilesRaw.Select(p => new ReceivedLikeDto
         {
             UserId = p.UserId,
+            IsSuperLike = superIds.Contains(p.UserId),
             DisplayName = p.DisplayName,
             Age = p.Age,
 

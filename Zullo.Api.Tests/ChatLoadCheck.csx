@@ -103,6 +103,8 @@ try
             services.AddScoped<UserRelationService>();
             services.AddScoped<PushNotificationService>();
             services.AddScoped<LikeLimitService>();
+                services.AddHttpClient<ICommerceVerifier, RevenueCatVerifier>();
+                services.AddScoped<CommerceService>();
             services.AddSingleton<MessageSendLimiter>();
             services.AddAuthenticationProtection();
             services.AddSignalR();
@@ -344,6 +346,43 @@ try
     var newHistory = await a.GetFromJsonAsync<MessagePageDto>($"/messages/thread-page?otherUserId={recipient.Id}");
     Check(newHistory!.Messages.Count == 0, "New match resurrected old conversation");
     Console.WriteLine("PASS: PostgreSQL block/unblock, live invalidation on both users, owned list, fresh reciprocal rematch and empty new history.");
+    // Real PostgreSQL row locking: a single purchased Boost cannot be spent twice.
+    await using (var db = new AppDbContext(options))
+    {
+        var wallet = await db.CommerceAccounts.SingleOrDefaultAsync(w => w.UserId == concurrentSender.Id);
+        if (wallet == null) { wallet = new CommerceAccount { UserId = concurrentSender.Id }; db.CommerceAccounts.Add(wallet); }
+        wallet.PurchasedBoosts = 1;
+        wallet.BoostUntilUtc = null;
+        await db.SaveChangesAsync();
+    }
+    var boostAttempts = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => a.PostAsync("/commerce/boost", null)));
+    Check(boostAttempts.Count(r => r.StatusCode == HttpStatusCode.OK) == 1, "Concurrent Boost spent the same credit twice");
+    Check(boostAttempts.Count(r => r.StatusCode == HttpStatusCode.Conflict) == 7, "Active Boost was not protected against duplicate activation");
+    await Parallel.ForEachAsync(Enumerable.Range(0, 8), async (_, cancellation) => {
+        using var scope = host.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<CommerceService>().ApplyCredit(concurrentSender.Id,
+            new VerifiedCredit("app_store:pg-idempotency", "zullo_superlikes_5", 5, 0), false, cancellation);
+    });
+    await using (var db = new AppDbContext(options))
+    {
+        var wallet = await db.CommerceAccounts.SingleAsync(w => w.UserId == concurrentSender.Id);
+        Check(wallet.PurchasedSuperLikes == 5, "Concurrent replay multiplied purchased credits");
+        Check(wallet.PurchasedBoosts == 0, "Boost balance was not persisted");
+        wallet.PurchasedSuperLikes = 1;
+        foreach (var like in await db.Likes.Where(l => l.FromUserId == concurrentSender.Id).ToListAsync()) like.CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1);
+        await db.SaveChangesAsync();
+    }
+    var superLikeDelivery = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+    populationSockets[998].On<JsonElement>("SuperLikeReceived", value => superLikeDelivery.TrySetResult(value));
+    populationSockets[999].On<JsonElement>("SuperLikeReceived", value => superLikeDelivery.TrySetResult(value));
+    var superAttempts = await Task.WhenAll(new[] { users[998].Id, users[999].Id }.Select(target =>
+        a.PostAsJsonAsync("/swipe/like", new { targetUserId = target, superLike = true })));
+    Check(superAttempts.Count(r => r.StatusCode == HttpStatusCode.OK) == 1, "Concurrent Superlikes overspent a single credit");
+    Check((await superLikeDelivery.Task.WaitAsync(TimeSpan.FromSeconds(5))).GetProperty("senderUserId").GetGuid() == concurrentSender.Id,
+        "Superlike did not reach its authenticated recipient");
+    await using (var db = new AppDbContext(options))
+        Check((await db.CommerceAccounts.SingleAsync(w => w.UserId == concurrentSender.Id)).PurchasedSuperLikes == 0, "Superlike debit was not persisted");
+    Console.WriteLine("PASS: real PostgreSQL concurrent Boost activation, credit replay and Superlike debit.");
     await File.WriteAllTextAsync(Environment.GetEnvironmentVariable("ZULLO_CHAT_TEST_RESULTS") ?? "/tmp/zullo-chat-load-results.json",
         JsonSerializer.Serialize(new { scenario = "In-process TestServer HTTP/WebSockets + real PostgreSQL; not a production capacity certification", results }, new JsonSerializerOptions { WriteIndented = true }));
     Console.WriteLine("PASS: migration, concurrent idempotency, authenticated live delivery, receipt cutoff, reconnect catchup, paging, load and blocked replay.");

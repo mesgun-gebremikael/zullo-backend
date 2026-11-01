@@ -6,4 +6,5 @@ public class SwipeTargetDto
 {
     [Required]
     public Guid TargetUserId { get; set; }
+    public bool SuperLike { get; set; }
 }

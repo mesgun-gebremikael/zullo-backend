@@ -24,6 +24,10 @@ public static class AuthenticationProtection
                     QueueLimit = 0,
                     AutoReplenishment = true
                 }));
+            options.AddPolicy("commerce", context => RateLimitPartition.GetFixedWindowLimiter(
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+                    context.Request.Headers.Authorization.ToString() + ":" + context.Connection.RemoteIpAddress))),
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
             options.OnRejected = async (context, cancellationToken) =>
             {
                 var retry = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var value)

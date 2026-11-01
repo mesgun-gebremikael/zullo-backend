@@ -29,6 +29,7 @@ public class LikeLimitService
     // Försöker använda en like. Returnerar true/false.
     public async Task<bool> TryConsumeLikeAsync(Guid userId)
     {
+        if (CommerceService.Premium(await _db.CommerceAccounts.AsNoTracking().SingleOrDefaultAsync(a => a.UserId == userId))) return true;
         var user = await _db.Users.FirstAsync(u => u.Id == userId);
 
         await EnsureWindowUpToDateAsync(user);

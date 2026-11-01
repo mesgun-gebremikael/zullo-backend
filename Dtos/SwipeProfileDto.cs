@@ -6,6 +6,7 @@ public class SwipeProfileDto
 {
     // Andra användarens id
     public Guid UserId { get; set; }
+    public bool SuperLikedYou { get; set; }
 
     public string DisplayName { get; set; } = "";
     public int Age { get; set; }

@@ -15,6 +15,8 @@ public class AppDbContext : DbContext
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Report> Reports => Set<Report>();
     public DbSet<Block> Blocks => Set<Block>();
+    public DbSet<CommerceAccount> CommerceAccounts => Set<CommerceAccount>();
+    public DbSet<PurchaseGrant> PurchaseGrants => Set<PurchaseGrant>();
 
 
 
@@ -42,6 +44,12 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<CommerceAccount>().HasKey(a => a.UserId);
+        modelBuilder.Entity<CommerceAccount>().HasOne<User>().WithOne().HasForeignKey<CommerceAccount>(a => a.UserId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<PurchaseGrant>().HasKey(g => g.TransactionKey);
+        modelBuilder.Entity<PurchaseGrant>().Property(g => g.TransactionKey).HasMaxLength(220);
+        modelBuilder.Entity<PurchaseGrant>().Property(g => g.ProductId).HasMaxLength(100);
+        modelBuilder.Entity<PurchaseGrant>().HasOne<User>().WithMany().HasForeignKey(g => g.UserId).OnDelete(DeleteBehavior.Cascade);
         //kopplar Dbset Users -> tabell "user"
         modelBuilder.Entity<User>().ToTable("User");
 
