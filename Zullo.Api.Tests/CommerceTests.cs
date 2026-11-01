@@ -153,6 +153,53 @@ public class CommerceTests
     }
 
     [Fact]
+    public async Task ReceivedLikesSummaryCountsLockedInterestWithoutExposingIdentitiesAndExcludesRelations()
+    {
+        var store = new VerifiedStore();
+        await using var app = await App(store); await Profiles(app);
+        using var a = app.Client(app.A); using var b = app.Client(app.B);
+        await a.PostAsJsonAsync("/swipe/like", new { targetUserId = app.B });
+        await a.PostAsJsonAsync("/swipe/like", new { targetUserId = app.B });
+        var summary = await b.GetFromJsonAsync<JsonElement>("/likes/received/summary");
+        Assert.Equal(1, summary.GetProperty("totalCount").GetInt32());
+        Assert.Equal(1, summary.GetProperty("hiddenCount").GetInt32());
+        Assert.False(summary.GetProperty("canViewAll").GetBoolean());
+        Assert.Equal(3, summary.EnumerateObject().Count());
+        Assert.DoesNotContain(app.A.ToString(), summary.GetRawText());
+        Assert.Empty((await b.GetFromJsonAsync<List<ReceivedLikeDto>>("/likes/received"))!);
+        await using (var db = app.Db()) {
+            db.Likes.Add(new Like { FromUserId = app.C, ToUserId = app.B, IsSuperLike = true });
+            await db.SaveChangesAsync();
+        }
+        summary = await b.GetFromJsonAsync<JsonElement>("/likes/received/summary");
+        Assert.Equal(2, summary.GetProperty("totalCount").GetInt32());
+        Assert.Equal(1, summary.GetProperty("hiddenCount").GetInt32());
+        Assert.Equal(app.C, Assert.Single((await b.GetFromJsonAsync<List<ReceivedLikeDto>>("/likes/received"))!).UserId);
+        store.Active = true;
+        await b.PostAsync("/commerce/sync", null);
+        summary = await b.GetFromJsonAsync<JsonElement>("/likes/received/summary");
+        Assert.Equal(0, summary.GetProperty("hiddenCount").GetInt32());
+        Assert.True(summary.GetProperty("canViewAll").GetBoolean());
+        Assert.Equal(2, (await b.GetFromJsonAsync<List<ReceivedLikeDto>>("/likes/received"))!.Count);
+        await b.PostAsJsonAsync("/swipe/like", new { targetUserId = app.A });
+        summary = await b.GetFromJsonAsync<JsonElement>("/likes/received/summary");
+        Assert.Equal(1, summary.GetProperty("totalCount").GetInt32());
+        await using (var db = app.Db()) {
+            (await db.Profiles.SingleAsync(p => p.UserId == app.C)).IsVisible = false;
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(0, (await b.GetFromJsonAsync<JsonElement>("/likes/received/summary")).GetProperty("totalCount").GetInt32());
+        await using (var db = app.Db()) {
+            (await db.Profiles.SingleAsync(p => p.UserId == app.C)).IsVisible = true;
+            await db.SaveChangesAsync();
+        }
+        using var c = app.Client(app.C);
+        await c.PostAsJsonAsync("/blocks", new { blockedUserId = app.B });
+        Assert.Equal(0, (await b.GetFromJsonAsync<JsonElement>("/likes/received/summary")).GetProperty("totalCount").GetInt32());
+        Assert.Empty((await b.GetFromJsonAsync<List<ReceivedLikeDto>>("/likes/received"))!);
+    }
+
+    [Fact]
     public async Task SuperLikeConsumesOneCreditIsVisibleToRecipientAndNeedsReciprocalMatch()
     {
         var store = new VerifiedStore { Credits = new() { new("play_store:super", "zullo_superlikes_5", 5, 0) } };

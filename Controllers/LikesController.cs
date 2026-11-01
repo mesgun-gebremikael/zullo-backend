@@ -26,71 +26,42 @@ public class LikesController : ControllerBase
 
 
 
-    // GET /likes/received
+    private IQueryable<Zullo.Api.Models.Like> EligibleLikes(Guid me) => _db.Likes.AsNoTracking()
+        .Where(l => l.ToUserId == me && l.FromUserId != me &&
+            _db.Profiles.Any(p => p.UserId == l.FromUserId && p.IsVisible) &&
+            !_db.Matches.Any(m => (m.UserAId == me && m.UserBId == l.FromUserId) || (m.UserBId == me && m.UserAId == l.FromUserId)) &&
+            !_db.Blocks.Any(b => (b.FromUserId == me && b.BlockedUserId == l.FromUserId) || (b.FromUserId == l.FromUserId && b.BlockedUserId == me)));
+
+    private async Task<bool> Premium(Guid me)
+    {
+        if (_commerce != null) await _commerce.RefreshBenefitsIfSubscribed(me);
+        return CommerceService.Premium(await _db.CommerceAccounts.AsNoTracking().SingleOrDefaultAsync(a => a.UserId == me));
+    }
+
+    // Counts contain no sender IDs, names or image URLs, including for locked likes.
+    [HttpGet("received/summary")]
+    public async Task<IActionResult> Summary()
+    {
+        if (!CurrentUserService.TryGetUserId(User, out var me)) return Unauthorized();
+        var premium = await Premium(me);
+        var likes = EligibleLikes(me);
+        var counts = await likes.GroupBy(_ => 1).Select(g => new {
+            Total = g.Count(), Hidden = g.Count(l => !l.IsSuperLike)
+        }).SingleOrDefaultAsync();
+        return Ok(new { totalCount = counts?.Total ?? 0, hiddenCount = premium ? 0 : counts?.Hidden ?? 0, canViewAll = premium });
+    }
+
     [HttpGet("received")]
     public async Task<IActionResult> GetReceivedLikes()
     {
-        Guid meId;
-        try { meId = CurrentUserService.GetUserIdOrThrow(User); }
-        catch
-        {
-            return Unauthorized(new ErrorMessageResponseDto
-            {
-                Message = "Invalid token."
-            });
-        }
-        if (_commerce != null) await _commerce.RefreshBenefitsIfSubscribed(meId);
-        var premium = CommerceService.Premium(await _db.CommerceAccounts.AsNoTracking().SingleOrDefaultAsync(a => a.UserId == meId));
-        var superIds = await _db.Likes.Where(l => l.ToUserId == meId && l.IsSuperLike).Select(l => l.FromUserId).ToListAsync();
-        // Free users may see Superlikes; ordinary incoming identities are server-gated.
-        // 1️ Hämta userIds som har gillat mig
-        var likedMeIds = await _db.Likes.AsNoTracking()
-            .Where(l => l.ToUserId == meId && (premium || l.IsSuperLike))
-            .Select(l => l.FromUserId)
-            .Distinct()
-            .ToListAsync();
-
-        if (likedMeIds.Count == 0)
-            return Ok(new List<ReceivedLikeDto>());
-
-        // 2️ Hämta redan matchade userIds (så vi kan filtrera bort dem)
-        var matchedIds = await _db.Matches.AsNoTracking()
-            .Where(m => m.UserAId == meId || m.UserBId == meId)
-            .Select(m => m.UserAId == meId ? m.UserBId : m.UserAId)
-            .ToListAsync();
-
-        // 3️ Hämta blockerade användare så de inte visas i likes-listan
-        var blockedIds = await _userRelationService.GetBlockedUserIdsAsync(meId);
-
-        // Gör listorna snabbare att slå upp i
-        var matchedSet = matchedIds.ToHashSet();
-        var blockedSet = blockedIds.ToHashSet();
-
-        // 4️ Filtrera bort redan matchade och blockerade
-        var filteredIds = likedMeIds
-            .Where(id => !matchedSet.Contains(id) && !blockedSet.Contains(id))
-            .ToList();
-
-        if (filteredIds.Count == 0)
-            return Ok(new List<ReceivedLikeDto>());
-
-        // 4️⃣ Hämta profiler (först till minne)
-        var profilesRaw = await _db.Profiles.AsNoTracking()
-            .Where(p => filteredIds.Contains(p.UserId))
-            .ToListAsync();
-
-        // 5️⃣ Bygg svaret i C# (inte i SQL) -> då funkar jsonb alltid
-        var result = profilesRaw.Select(p => new ReceivedLikeDto
-        {
-            UserId = p.UserId,
-            IsSuperLike = superIds.Contains(p.UserId),
-            DisplayName = p.DisplayName,
-            Age = p.Age,
-
-            // jsonb-safe: ta första bilden om den finns
-            PhotoUrl = p.PhotoUrls?.FirstOrDefault() ?? ""
-        }).ToList();
-
-        return Ok(result);
+        if (!CurrentUserService.TryGetUserId(User, out var me)) return Unauthorized();
+        var premium = await Premium(me);
+        var likes = await EligibleLikes(me).Where(l => premium || l.IsSuperLike).ToListAsync();
+        var ids = likes.Select(l => l.FromUserId).ToList();
+        var profiles = await _db.Profiles.AsNoTracking().Where(p => ids.Contains(p.UserId)).ToListAsync();
+        return Ok(profiles.Select(p => new ReceivedLikeDto {
+            UserId = p.UserId, IsSuperLike = likes.Any(l => l.FromUserId == p.UserId && l.IsSuperLike),
+            DisplayName = p.DisplayName, Age = p.Age, PhotoUrl = p.PhotoUrls?.FirstOrDefault() ?? ""
+        }).ToList());
     }
 }

@@ -314,6 +314,7 @@ public class SwipeController : ControllerBase
             }
 
             await relationTransaction.CommitAsync();
+            if (!already) await NotifyIncomingLike(dto.TargetUserId);
             if (dto.SuperLike && !already) await NotifySuperLike(meId, dto.TargetUserId);
             return Ok(new LikeResponseDto
             {
@@ -322,6 +323,7 @@ public class SwipeController : ControllerBase
         }
 
         await relationTransaction.CommitAsync();
+        if (!already) await NotifyIncomingLike(dto.TargetUserId);
         if (dto.SuperLike && !already) await NotifySuperLike(meId, dto.TargetUserId);
         return Ok(new LikeResponseDto
         {
@@ -380,6 +382,17 @@ public class SwipeController : ControllerBase
             Skipped = true
         });
     }
+    private async Task NotifyIncomingLike(Guid recipient)
+    {
+        if (_hub == null) return;
+        try {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            // Invalidation only: no identity or profile details bypass the Premium gate.
+            await Microsoft.AspNetCore.SignalR.ClientProxyExtensions.SendAsync(
+                _hub.Clients.User(recipient.ToString()), "LikesChanged", new { }, deadline.Token);
+        } catch { /* Notification delivery must not undo the committed like. */ }
+    }
+
     private async Task NotifySuperLike(Guid from, Guid to)
     {
         try
