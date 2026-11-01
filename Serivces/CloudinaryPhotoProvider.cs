@@ -51,7 +51,7 @@ public class CloudinaryPhotoProvider(HttpClient client, IConfiguration configura
             return JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellation), new JsonDocumentOptions { MaxDepth = 24 });
         } catch (Exception ex) when (ex is JsonException or HttpRequestException) { throw new PhotoProviderException("invalid_provider_response"); }
     }
-    private VerifiedPhoto Parse(JsonElement root, string publicId, OwnedPhoto? owner = null)
+    private VerifiedPhoto Parse(JsonElement root, string publicId, OwnedPhoto? owner = null, bool delivery = true)
     {
         try {
             if (root.GetProperty("public_id").GetString() != publicId || root.GetProperty("resource_type").GetString() != "image" || root.GetProperty("type").GetString() != "upload")
@@ -66,6 +66,9 @@ public class CloudinaryPhotoProvider(HttpClient client, IConfiguration configura
                         throw new PhotoProviderException("ownership_mismatch");
                 }
             }
+            // Failed output validation must not prevent erasure of an otherwise
+            // verified owned asset. Delivery constraints apply only to publishing.
+            if (!delivery) return new VerifiedPhoto(asset, publicId, "");
             var version = root.GetProperty("version").GetInt64();
             var format = root.GetProperty("format").GetString();
             if (version <= 0 || format is not ("jpg" or "jpeg" or "png" or "webp")) throw new PhotoProviderException("invalid_provider_response");
@@ -77,7 +80,7 @@ public class CloudinaryPhotoProvider(HttpClient client, IConfiguration configura
             return new VerifiedPhoto(asset, publicId, url);
         } catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException or FormatException) { throw new PhotoProviderException("invalid_provider_response"); }
     }
-    private async Task<VerifiedPhoto?> Inspect(string publicId, OwnedPhoto? owner, CancellationToken cancellation)
+    private async Task<VerifiedPhoto?> Inspect(string publicId, OwnedPhoto? owner, CancellationToken cancellation, bool forDeletion = false)
     {
         Configured(owner);
         using var request = new HttpRequestMessage(HttpMethod.Get, Endpoint($"resources/image/upload/{Uri.EscapeDataString(publicId)}?context=true"));
@@ -85,7 +88,7 @@ public class CloudinaryPhotoProvider(HttpClient client, IConfiguration configura
         using var response = await client.SendAsync(request, cancellation);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         using var json = await Body(response, cancellation);
-        return Parse(json.RootElement, publicId, owner);
+        return Parse(json.RootElement, publicId, owner, delivery: !forDeletion);
     }
     public Task<VerifiedPhoto?> InspectLegacy(string publicId, CancellationToken cancellation)
     {
@@ -127,7 +130,7 @@ public class CloudinaryPhotoProvider(HttpClient client, IConfiguration configura
             throw new PhotoProviderException("ownership_mismatch");
         if (photo.LegacyApprovedAtUtc != null && (photo.LegacyApprovalDigest == null || photo.ProviderAssetId == null || !photo.PublicId.StartsWith("zullo_profiles/", StringComparison.Ordinal)))
             throw new PhotoProviderException("ownership_mismatch");
-        var resource = await Inspect(photo.PublicId, photo, cancellation);
+        var resource = await Inspect(photo.PublicId, photo, cancellation, forDeletion: true);
         if (resource == null) return; // Idempotent already-deleted result.
         // Address the immutable asset ID, never a public ID that could be reused
         // between verification and deletion by an external provider operation.

@@ -89,6 +89,20 @@ public class CloudinaryPhotoProviderTests
         await provider.Delete(photo, default); Assert.Equal(3, calls);
     }
     [Fact]
+    public async Task FailedDeliveryDimensionValidationDoesNotPreventErasingTheOwnedAsset()
+    {
+        var photo = Photo(); var calls = 0;
+        var provider = Provider(request => {
+            calls++;
+            return Task.FromResult(calls switch {
+                1 => Resource(photo, width: 9000),
+                2 => Json(new { deleted = new { } }),
+                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+            });
+        });
+        await provider.Delete(photo, default); Assert.Equal(3, calls);
+    }
+    [Fact]
     public async Task SuccessfulHttpDeletionWithoutConfirmedAbsenceMustRetry()
     {
         var photo = Photo(); var provider = Provider(request => Task.FromResult(request.Method == HttpMethod.Delete ? Json(new { deleted = new { } }) : Resource(photo)));
