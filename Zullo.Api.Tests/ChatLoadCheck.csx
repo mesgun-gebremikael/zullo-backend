@@ -349,7 +349,8 @@ try
     // Real PostgreSQL row locking: a single purchased Boost cannot be spent twice.
     await using (var db = new AppDbContext(options))
     {
-        var wallet = await db.CommerceAccounts.SingleAsync(w => w.UserId == concurrentSender.Id);
+        var wallet = await db.CommerceAccounts.SingleOrDefaultAsync(w => w.UserId == concurrentSender.Id);
+        if (wallet == null) { wallet = new CommerceAccount { UserId = concurrentSender.Id }; db.CommerceAccounts.Add(wallet); }
         wallet.PurchasedBoosts = 1;
         wallet.BoostUntilUtc = null;
         await db.SaveChangesAsync();

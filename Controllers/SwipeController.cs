@@ -228,7 +228,7 @@ public class SwipeController : ControllerBase
 
         if (dto.TargetUserId == meId || dto.TargetUserId == Guid.Empty) return BadRequest();
         if (!await _db.Users.AnyAsync(u => u.Id == dto.TargetUserId)) return NotFound();
-        if (_commerce != null) await _commerce.State(meId);
+        if (_commerce != null) await _commerce.RefreshBenefitsIfSubscribed(meId);
         await using var relationTransaction = await RelationTransaction.Begin(_db, meId, dto.TargetUserId);
 
         if (_commerce != null) await _commerce.Lock(meId);
@@ -384,8 +384,9 @@ public class SwipeController : ControllerBase
     {
         try
         {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             if (_hub != null) await Microsoft.AspNetCore.SignalR.ClientProxyExtensions.SendAsync(
-                _hub.Clients.User(to.ToString()), "SuperLikeReceived", new { senderUserId = from });
+                _hub.Clients.User(to.ToString()), "SuperLikeReceived", new { senderUserId = from }, deadline.Token);
             var token = await _db.Users.AsNoTracking().Where(u => u.Id == to).Select(u => u.DeviceToken).SingleOrDefaultAsync();
             if (!string.IsNullOrWhiteSpace(token))
                 await FirebaseAdmin.Messaging.FirebaseMessaging.DefaultInstance.SendAsync(new FirebaseAdmin.Messaging.Message
@@ -394,7 +395,7 @@ public class SwipeController : ControllerBase
                     Notification = new FirebaseAdmin.Messaging.Notification { Title = "ZULLO ⭐", Body = "Någon har supergillat dig. Öppna Swipa för att se profilen." },
                     Android = new FirebaseAdmin.Messaging.AndroidConfig { Priority = FirebaseAdmin.Messaging.Priority.High, Notification = new FirebaseAdmin.Messaging.AndroidNotification { ChannelId = "messages", Sound = "default" } },
                     Data = new Dictionary<string, string> { ["type"] = "super_like", ["recipientUserId"] = to.ToString() }
-                });
+                }, deadline.Token);
         }
         catch (Exception ex) { HttpContext.RequestServices.GetService<ILogger<SwipeController>>()?.LogWarning(ex, "Superlike notification could not be delivered."); }
     }

@@ -111,7 +111,7 @@ public class PresenceController(AppDbContext db, CommerceService commerce, UserR
     public async Task<IActionResult> Heartbeat()
     {
         if (!CurrentUserService.TryGetUserId(User, out var user)) return Unauthorized();
-        await commerce.State(user);
+        await commerce.RefreshBenefitsIfSubscribed(user);
         await using var transaction = await commerce.Begin(user);
         var account = await commerce.Account(user);
         account.LastActivityUtc = DateTime.UtcNow;

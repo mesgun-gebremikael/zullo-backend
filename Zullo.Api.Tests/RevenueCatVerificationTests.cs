@@ -57,6 +57,22 @@ public class RevenueCatVerificationTests
         Assert.True(result.PremiumUntil > DateTime.UtcNow);
         var credit = Assert.Single(result.Credits); Assert.Equal(5, credit.SuperLikes); Assert.Equal("app_store:store-transaction", credit.Key);
     }
+    sealed class MissingSubscriber : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+    }
+    [Fact]
+    public async Task ANewFreeAccountDoesNotNeedToExistInRevenueCatBeforeOpeningTheStore()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> {
+            ["Commerce:Enabled"] = "true", ["Commerce:RevenueCatSecretKey"] = "sk_server_only",
+            ["Commerce:WebhookAuthorization"] = new string('x', 40),
+        }).Build();
+        var verifier = new RevenueCatVerifier(new HttpClient(new MissingSubscriber()), config, new EnvironmentStub("Production"));
+        var result = await verifier.Fetch(Guid.NewGuid());
+        Assert.Null(result.PremiumUntil); Assert.Empty(result.Credits);
+    }
     [Fact]
     public async Task AnotherRevenueCatIdentityCannotBeRestoredIntoThisAccount()
     {

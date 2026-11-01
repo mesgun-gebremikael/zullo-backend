@@ -54,6 +54,29 @@ public class CommerceTests
         await using var db = app.Db(); Assert.Empty(await db.Likes.ToListAsync());
     }
 
+    sealed class UnavailableProvider : ICommerceVerifier
+    {
+        public int Calls;
+        public bool Enabled => true;
+        public Task<VerifiedCommerce> Fetch(Guid user, CancellationToken cancellation = default)
+        { Calls++; throw new HttpRequestException("provider temporarily unavailable"); }
+    }
+    [Fact]
+    public async Task FreeSwipingAndPresenceNeverDependOnThePurchaseProvider()
+    {
+        var provider = new UnavailableProvider();
+        await using var app = await TestApp.Start(configure: services => services.AddSingleton<ICommerceVerifier>(provider));
+        await Profiles(app);
+        using var a = app.Client(app.A);
+        Assert.Equal(HttpStatusCode.OK, (await a.PostAsJsonAsync("/swipe/like", new { targetUserId = app.B })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await a.PostAsync("/presence", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await a.GetAsync("/likes/received")).StatusCode);
+        Assert.Equal(0, provider.Calls);
+        var state = await a.GetFromJsonAsync<CommerceState>("/commerce/state");
+        Assert.False(state!.Premium); Assert.False(state.CheckoutEnabled); Assert.Equal(0, state.SuperLikes);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await a.PostAsync("/commerce/sync", null)).StatusCode);
+    }
+
     [Fact]
     public async Task ProviderTransactionsAreGrantedExactlyOnceAcrossSyncAndNewClients()
     {
@@ -134,6 +157,7 @@ public class CommerceTests
         var store = new VerifiedStore { Credits = new() { new("play_store:super", "zullo_superlikes_5", 5, 0) } };
         await using var app = await App(store); await Profiles(app);
         using var a = app.Client(app.A); using var b = app.Client(app.B);
+        await a.PostAsync("/commerce/sync", null); // purchase verification precedes spending
         var response = await a.PostAsJsonAsync("/swipe/like", new { targetUserId = app.B, superLike = true });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.False((await response.Content.ReadFromJsonAsync<LikeResponseDto>())!.Matched);

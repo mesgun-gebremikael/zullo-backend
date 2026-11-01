@@ -30,6 +30,8 @@ public class RevenueCatVerifier(HttpClient client, IConfiguration config, IHostE
         using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.revenuecat.com/v1/subscribers/{user}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config["Commerce:RevenueCatSecretKey"]);
         using var response = await client.SendAsync(request, cancellation);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return new VerifiedCommerce(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), null, null, new());
         response.EnsureSuccessStatusCode();
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellation));
         var root = json.RootElement;
@@ -118,12 +120,23 @@ public class CommerceService(AppDbContext db, ICommerceVerifier verifier)
             account.NextSuperLikeRefreshUtc = now.AddDays(7);
         }
     }
+    public async Task RefreshBenefitsIfSubscribed(Guid user)
+    {
+        var account = await db.CommerceAccounts.AsNoTracking().SingleOrDefaultAsync(a => a.UserId == user);
+        if (Premium(account)) await State(user);
+    }
+
     public async Task<CommerceState> State(Guid user, bool force = false, CancellationToken cancellation = default)
     {
         var existing = await db.CommerceAccounts.AsNoTracking().SingleOrDefaultAsync(a => a.UserId == user, cancellation);
         VerifiedCommerce? verified = null;
+        var checkoutHealthy = true;
         if (verifier.Enabled && (force || existing?.LastVerifiedUtc == null || existing.LastVerifiedUtc < DateTime.UtcNow.AddMinutes(-2)))
-            verified = await verifier.Fetch(user, cancellation);
+        {
+            try { verified = await verifier.Fetch(user, cancellation); }
+            catch (Exception ex) when (!force && ex is HttpRequestException or TaskCanceledException)
+            { checkoutHealthy = false; /* Preserve previously verified rights; never fabricate a purchase. */ }
+        }
         await using var transaction = await Begin(user);
         var account = await Account(user);
         if (verified != null && verified.SnapshotMs >= account.ProviderSnapshotMs)
@@ -144,7 +157,7 @@ public class CommerceService(AppDbContext db, ICommerceVerifier verifier)
         }
         await db.SaveChangesAsync(cancellation);
         await transaction.CommitAsync(cancellation);
-        return ToState(account);
+        return ToState(account) with { CheckoutEnabled = verifier.Enabled && checkoutHealthy };
     }
     public async Task ApplyCredit(Guid user, VerifiedCredit credit, bool refund, CancellationToken cancellation)
     {

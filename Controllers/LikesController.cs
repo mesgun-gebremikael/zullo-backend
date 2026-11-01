@@ -39,7 +39,7 @@ public class LikesController : ControllerBase
                 Message = "Invalid token."
             });
         }
-        if (_commerce != null) await _commerce.State(meId);
+        if (_commerce != null) await _commerce.RefreshBenefitsIfSubscribed(meId);
         var premium = CommerceService.Premium(await _db.CommerceAccounts.AsNoTracking().SingleOrDefaultAsync(a => a.UserId == meId));
         var superIds = await _db.Likes.Where(l => l.ToUserId == meId && l.IsSuperLike).Select(l => l.FromUserId).ToListAsync();
         // Free users may see Superlikes; ordinary incoming identities are server-gated.
