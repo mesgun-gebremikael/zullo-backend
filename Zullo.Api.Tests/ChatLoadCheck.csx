@@ -372,16 +372,35 @@ try
         foreach (var like in await db.Likes.Where(l => l.FromUserId == concurrentSender.Id).ToListAsync()) like.CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1);
         await db.SaveChangesAsync();
     }
+    var likesInvalidation = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+    populationSockets[998].On<JsonElement>("LikesChanged", value => likesInvalidation.TrySetResult(value));
+    populationSockets[999].On<JsonElement>("LikesChanged", value => likesInvalidation.TrySetResult(value));
     var superLikeDelivery = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
     populationSockets[998].On<JsonElement>("SuperLikeReceived", value => superLikeDelivery.TrySetResult(value));
     populationSockets[999].On<JsonElement>("SuperLikeReceived", value => superLikeDelivery.TrySetResult(value));
     var superAttempts = await Task.WhenAll(new[] { users[998].Id, users[999].Id }.Select(target =>
         a.PostAsJsonAsync("/swipe/like", new { targetUserId = target, superLike = true })));
     Check(superAttempts.Count(r => r.StatusCode == HttpStatusCode.OK) == 1, "Concurrent Superlikes overspent a single credit");
+    Check(!(await likesInvalidation.Task.WaitAsync(TimeSpan.FromSeconds(5))).EnumerateObject().Any(),
+        "Likes invalidation must not reveal sender identity to a free recipient");
     Check((await superLikeDelivery.Task.WaitAsync(TimeSpan.FromSeconds(5))).GetProperty("senderUserId").GetGuid() == concurrentSender.Id,
         "Superlike did not reach its authenticated recipient");
     await using (var db = new AppDbContext(options))
         Check((await db.CommerceAccounts.SingleAsync(w => w.UserId == concurrentSender.Id)).PurchasedSuperLikes == 0, "Superlike debit was not persisted");
+    var regularLikeInvalidation = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+    populationSockets[997].On<JsonElement>("LikesChanged", value => regularLikeInvalidation.TrySetResult(value));
+    await using (var db = new AppDbContext(options)) {
+        foreach (var like in await db.Likes.Where(l => l.FromUserId == concurrentSender.Id).ToListAsync()) like.CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1);
+        await db.SaveChangesAsync();
+    }
+    Check((await a.PostAsJsonAsync("/swipe/like", new { targetUserId = users[997].Id })).StatusCode == HttpStatusCode.OK,
+        "Ordinary like could not be sent");
+    Check(!(await regularLikeInvalidation.Task.WaitAsync(TimeSpan.FromSeconds(5))).EnumerateObject().Any(),
+        "Ordinary like must update its recipient without revealing identity");
+    var incoming = Client(users[997].Id);
+    var hiddenSummary = await incoming.GetFromJsonAsync<JsonElement>("/likes/received/summary");
+    Check(hiddenSummary.GetProperty("totalCount").GetInt32() == 1 && hiddenSummary.GetProperty("hiddenCount").GetInt32() == 1,
+        "PostgreSQL hidden likes summary must count a regular incoming like");
     Console.WriteLine("PASS: real PostgreSQL concurrent Boost activation, credit replay and Superlike debit.");
     await File.WriteAllTextAsync(Environment.GetEnvironmentVariable("ZULLO_CHAT_TEST_RESULTS") ?? "/tmp/zullo-chat-load-results.json",
         JsonSerializer.Serialize(new { scenario = "In-process TestServer HTTP/WebSockets + real PostgreSQL; not a production capacity certification", results }, new JsonSerializerOptions { WriteIndented = true }));
