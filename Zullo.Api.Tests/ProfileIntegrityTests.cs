@@ -11,7 +11,7 @@ namespace Zullo.Api.Tests;
 
 public class ProfileIntegrityTests
 {
-    private static JsonObject FullProfile() => JsonNode.Parse("""
+    private static JsonObject FullProfile(Guid? owner = null) => JsonNode.Parse("""
     {"displayName":"Anna","age":29,"gender":"Kvinna","bio":"Min bio",
      "intention":"Relationship","religion":"Kristen","workout":"Ofta","smoking":"Nej",
      "pets":"Har husdjur","heightCm":175,"relationshipHistory":"Varit i ett förhållande",
@@ -21,7 +21,20 @@ public class ProfileIntegrityTests
      "livePlace":"Stockholm","originPlace":"Asmara","interests":["Musik","Resor"],
      "photoUrls":["https://images.example/a.jpg","https://images.example/b.jpg"],
      "lat":59.3293,"lng":18.0686,"countryCode":"SE","interestedIn":"Män","matchRadiusKm":250}
-    """)!.AsObject();
+    """.Replace("https://images.example/", owner == null ? "https://images.example/" : $"https://images.example/{owner:N}/"))!.AsObject();
+
+    private static async Task<TestApp> Start()
+    {
+        var app = await TestApp.Start();
+        await using var db = app.Db();
+        foreach (var user in new[] { app.A, app.B }) foreach (var suffix in new[] { "a.jpg", "b.jpg" }) {
+            var id = Guid.NewGuid();
+            db.OwnedPhotos.Add(new OwnedPhoto { Id = id, UserId = user, State = PhotoStates.Ready, CloudName = "test",
+                PublicId = $"zullo_owned/{user:N}/{id:N}", Url = user == app.A ? $"https://images.example/{suffix}" : $"https://images.example/{user:N}/{suffix}",
+                UploadFinishedUtc = DateTime.UtcNow, NextAttemptUtc = DateTime.UtcNow.AddHours(24) });
+        }
+        await db.SaveChangesAsync(); return app;
+    }
 
     private static async Task<JsonObject> Read(HttpClient client)
     {
@@ -39,7 +52,7 @@ public class ProfileIntegrityTests
     [Fact]
     public async Task OnboardingRoundTripsAllFieldsAndSwedishValues()
     {
-        await using var app = await TestApp.Start();
+        await using var app = await Start();
         using var client = app.Client(app.A);
         var sent = FullProfile();
         var response = await client.PostAsJsonAsync("/me/profile", sent);
@@ -54,7 +67,7 @@ public class ProfileIntegrityTests
     [InlineData("PATCH")]
     public async Task FilterAndRadiusUpdatePreservesEveryOtherField(string method)
     {
-        await using var app = await TestApp.Start();
+        await using var app = await Start();
         using var client = app.Client(app.A);
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/me/profile", FullProfile())).StatusCode);
         var before = await Read(client);
@@ -71,7 +84,7 @@ public class ProfileIntegrityTests
     [Fact]
     public async Task OlderClientEditingCoreFieldsCannotEraseExtendedDataOrLocation()
     {
-        await using var app = await TestApp.Start();
+        await using var app = await Start();
         using var client = app.Client(app.A);
         await client.PostAsJsonAsync("/me/profile", FullProfile());
         var before = await Read(client);
@@ -89,7 +102,7 @@ public class ProfileIntegrityTests
     [Fact]
     public async Task ExplicitClearingAndZeroCoordinatesWorkWithoutClearingOmittedFields()
     {
-        await using var app = await TestApp.Start();
+        await using var app = await Start();
         using var client = app.Client(app.A);
         await client.PostAsJsonAsync("/me/profile", FullProfile());
         var before = await Read(client);
@@ -107,7 +120,7 @@ public class ProfileIntegrityTests
     [Fact]
     public async Task UnrelatedUpdateDoesNotMakeAnExistingHiddenProfileVisible()
     {
-        await using var app = await TestApp.Start();
+        await using var app = await Start();
         using var client = app.Client(app.A);
         await client.PostAsJsonAsync("/me/profile", FullProfile());
         await using (var db = app.Db())
@@ -137,7 +150,7 @@ public class ProfileIntegrityTests
     [InlineData("{\"matchRadiusKm\":301}")]
     public async Task InvalidUpdateIsRejectedWithoutChangingProfileOrRadius(string invalidJson)
     {
-        await using var app = await TestApp.Start();
+        await using var app = await Start();
         using var client = app.Client(app.A);
         await client.PostAsJsonAsync("/me/profile", FullProfile());
         var before = await Read(client);
@@ -153,7 +166,7 @@ public class ProfileIntegrityTests
     [InlineData("{\"displayName\":\"Name\",\"gender\":\"Man\"}")]
     public async Task NewProfileRequiresCoreFields(string body)
     {
-        await using var app = await TestApp.Start();
+        await using var app = await Start();
         using var client = app.Client(app.A);
         Assert.Equal(HttpStatusCode.BadRequest,
             (await client.PostAsJsonAsync("/me/profile", JsonNode.Parse(body))).StatusCode);
@@ -164,11 +177,11 @@ public class ProfileIntegrityTests
     [Fact]
     public async Task ProfileUpdatesCannotModifyAnotherUsersData()
     {
-        await using var app = await TestApp.Start();
+        await using var app = await Start();
         using var a = app.Client(app.A);
         using var b = app.Client(app.B);
         await a.PostAsJsonAsync("/me/profile", FullProfile());
-        await b.PostAsJsonAsync("/me/profile", FullProfile());
+        await b.PostAsJsonAsync("/me/profile", FullProfile(app.B));
         var before = await Read(b);
         await a.PatchAsJsonAsync("/me/profile", new { userId = app.B, bio = "A changes own profile" });
         Assert.True(JsonNode.DeepEquals(before, await Read(b)));
@@ -185,7 +198,7 @@ public class ProfileIntegrityTests
     [InlineData("", null)]
     public async Task DiscoveryUsesOwnPreferenceWithoutChangingLikeOrBlockRules(string preference, string? expectedGender)
     {
-        await using var app = await TestApp.Start();
+        await using var app = await Start();
         using var client = app.Client(app.A);
         var profile = FullProfile();
         profile["interestedIn"] = preference;

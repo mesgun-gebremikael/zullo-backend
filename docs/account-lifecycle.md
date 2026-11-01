@@ -9,9 +9,11 @@
 
 ## External asset follow-up is required
 
-Legacy Cloudinary uploads are unsigned and profile records contain URLs without ownership receipts. Automatically deleting arbitrary URLs from a profile would allow deleting another person's asset. `AccountRemovalRequests` durably records the URLs and a pending review status. It is not a completed automatic asset-deletion worker.
+New owner-bound Cloudinary uploads have a durable deletion worker: saved photo removal and account closure queue assets, verify their immutable provider identity and retry until erasure is confirmed. Uploading/draft assets are covered, including responses that arrive after account closure. Pausing retains all photos. See [photo storage rollout](../deploy/PHOTO_STORAGE.md) for activation and monitoring.
 
-Before production launch, implement signed account-scoped uploads and a verified cleanup worker, or establish a staffed erasure process with deadlines. Review pending requests in the deployment database using the owner's restricted admin access. Validate that assets belong to the app's storage and are not referenced by another active account; process deletion/cache invalidation in the storage provider. Clear stored URL references and mark ExternalAssetsReviewed only after resolution. Do not publish customer URLs in logs or issue comments. Establish retention/purging rules for closed-account keys, purchase records, safety reports, backups and cleanup references. This PR does not establish a legal retention policy or certify store/legal readiness.
+Historical unsigned uploads still require a one-time human ownership review. The operator dry run proposes mappings, checks stable provider asset IDs and refuses ambiguous/shared references. Approval is required before the normal worker can erase these assets. `legacy_review` means unresolved follow-up, never completed erasure. Configure provider credentials, disable the old unsigned preset, complete real Cloudinary/mobile checks and review old records before claiming production readiness.
+
+Establish retention/purging rules for closed-account keys, technical photo tombstones, purchase records, safety reports and provider backups. This change does not establish a legal retention policy or certify store/legal readiness.
 
 ## Deployment and validation
 

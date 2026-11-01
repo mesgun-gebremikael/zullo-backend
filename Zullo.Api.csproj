@@ -31,5 +31,10 @@
 
   <ItemGroup>
     <Compile Remove="Zullo.Api.Tests/**/*.cs" />
+    <Content Remove="Zullo.Api.Tests/**" />
+    <None Remove="Zullo.Api.Tests/**" />
+    <Compile Remove="PhotoTools/**/*.cs" />
+    <Content Remove="PhotoTools/**" />
+    <None Remove="PhotoTools/**" />
   </ItemGroup>
 </Project>

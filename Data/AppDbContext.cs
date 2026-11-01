@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Report> Reports => Set<Report>();
     public DbSet<Block> Blocks => Set<Block>();
+    public DbSet<OwnedPhoto> OwnedPhotos => Set<OwnedPhoto>();
     public DbSet<AccountRemovalRequest> AccountRemovalRequests => Set<AccountRemovalRequest>();
     public DbSet<CommerceAccount> CommerceAccounts => Set<CommerceAccount>();
     public DbSet<PurchaseGrant> PurchaseGrants => Set<PurchaseGrant>();
@@ -45,6 +46,18 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<OwnedPhoto>().HasKey(p => p.Id);
+        modelBuilder.Entity<OwnedPhoto>().Property(p => p.Aliases).HasColumnType("jsonb");
+        modelBuilder.Entity<OwnedPhoto>().Property(p => p.State).HasMaxLength(30);
+        modelBuilder.Entity<OwnedPhoto>().Property(p => p.CloudName).HasMaxLength(100);
+        modelBuilder.Entity<OwnedPhoto>().Property(p => p.PublicId).HasMaxLength(250);
+        modelBuilder.Entity<OwnedPhoto>().Property(p => p.ProviderAssetId).HasMaxLength(100);
+        modelBuilder.Entity<OwnedPhoto>().Property(p => p.FileHash).HasMaxLength(64);
+        modelBuilder.Entity<OwnedPhoto>().Property(p => p.LastErrorCode).HasMaxLength(80);
+        modelBuilder.Entity<OwnedPhoto>().Property(p => p.LegacyApprovalDigest).HasMaxLength(64);
+        modelBuilder.Entity<OwnedPhoto>().HasIndex(p => new { p.CloudName, p.PublicId }).IsUnique();
+        modelBuilder.Entity<OwnedPhoto>().HasIndex(p => new { p.UserId, p.CreatedAtUtc });
+        modelBuilder.Entity<OwnedPhoto>().HasIndex(p => new { p.State, p.NextAttemptUtc });
         modelBuilder.Entity<AccountRemovalRequest>().Property(r => r.PhotoUrls).HasColumnType("jsonb");
         modelBuilder.Entity<AccountRemovalRequest>().HasIndex(r => r.FormerUserId).IsUnique();
         modelBuilder.Entity<CommerceAccount>().HasKey(a => a.UserId);

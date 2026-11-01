@@ -15,7 +15,7 @@ public record PauseAccount(bool Paused);
 public record RemoveAccount([Required, StringLength(128)] string Password, bool Confirm);
 
 [ApiController, Authorize, Route("me/account"), EnableRateLimiting("commerce")]
-public class AccountController(AppDbContext db, IHubContext<ChatHub> hub, ILogger<AccountController> logger, LoginAttemptService attempts) : ControllerBase
+public class AccountController(AppDbContext db, IHubContext<ChatHub> hub, ILogger<AccountController> logger, LoginAttemptService attempts, PhotoLifecycle photos) : ControllerBase
 {
     [HttpGet("status")]
     public async Task<IActionResult> State()
@@ -58,9 +58,10 @@ public class AccountController(AppDbContext db, IHubContext<ChatHub> hub, ILogge
         if (!BCrypt.Net.BCrypt.Verify(request.Password, account.PasswordHash))
             return BadRequest(new { message = "Lösenordet stämmer inte. Kontot har inte ändrats." });
         var profile = await db.Profiles.SingleOrDefaultAsync(p => p.UserId == me);
+        var legacyUrls = await photos.Close(me, profile?.PhotoUrls ?? new());
         var removal = new AccountRemovalRequest {
-            FormerUserId = me, PhotoUrls = profile?.PhotoUrls.Distinct().ToList() ?? new(),
-            ExternalAssetsReviewed = profile == null || profile.PhotoUrls.Count == 0
+            FormerUserId = me, PhotoUrls = legacyUrls,
+            ExternalAssetsReviewed = legacyUrls.Count == 0 && !await db.OwnedPhotos.AnyAsync(p => p.UserId == me && p.State != PhotoStates.Deleted)
         };
         db.AccountRemovalRequests.Add(removal);
         var recipients = await db.Likes.Where(l => l.FromUserId == me).Select(l => l.ToUserId).Distinct().ToListAsync();

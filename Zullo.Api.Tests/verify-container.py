@@ -124,6 +124,11 @@ with tempfile.TemporaryDirectory(prefix='zullo-container-') as temporary:
         assert status == 200, 'Real container login failed'
         token = json.loads(body)['token']
         assert request(base, '/matches', token=token)[0] == 200
+        photo_status, photo_body = request(base, '/me/photos/availability', token=token)
+        assert photo_status == 200 and not json.loads(photo_body)['available'], 'Photos must default to safely disabled without provider credentials'
+        assert command('docker', 'exec', api, 'test', '-f', '/app/photo-tools/PhotoTools.dll', check=False).returncode == 0
+        rejected_plan = command('docker', 'exec', api, 'dotnet', '/app/photo-tools/PhotoTools.dll', '--plan', '/tmp/unapproved-plan.json', check=False)
+        assert rejected_plan.returncode != 0, 'Photo operator tool must reject missing explicit database target'
         assert request(base, '/matches/force-match', {}, token)[0] == 404
         command('docker', 'stop', '--time', '2', postgres)
         until(lambda: request(base, '/health/ready'), 503)

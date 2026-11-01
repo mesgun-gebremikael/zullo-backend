@@ -13,12 +13,14 @@ RUN --mount=type=cache,target=/root/.nuget/packages \
     dotnet restore Zullo.Api.csproj && \
     dotnet tool install --tool-path /tools dotnet-ef --version 8.0.23 && \
     dotnet publish Zullo.Api.csproj -c Release --no-restore -o /out/app && \
+    dotnet publish PhotoTools/PhotoTools.csproj -c Release -o /out/photo-tools && \
     ASPNETCORE_ENVIRONMENT=Staging ConnectionStrings__Default="Host=localhost;Database=design_only;Username=design_only" \
     /tools/dotnet-ef migrations bundle --configuration Release --output /out/efbundle
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 COPY --from=build /out/app ./
+COPY --from=build /out/photo-tools ./photo-tools/
 COPY --from=build --chmod=755 /out/efbundle ./efbundle
 COPY --chmod=644 deploy/appsettings.Container.json ./appsettings.json
 COPY --chmod=755 deploy/entrypoint.sh ./entrypoint.sh

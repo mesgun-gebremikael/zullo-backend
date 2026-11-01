@@ -43,6 +43,7 @@ var outsider = users[1002];
 var sockets = new List<HubConnection>();
 IHost? host = null;
 var results = new List<object>();
+var photoProvider = new TestPhotoProvider();
 await using var admin = new NpgsqlConnection(adminConnection);
 await admin.OpenAsync();
 await new NpgsqlCommand($"CREATE DATABASE \"{database}\"", admin).ExecuteNonQueryAsync();
@@ -106,6 +107,10 @@ try
             services.AddScoped<LikeLimitService>();
                 services.AddHttpClient<ICommerceVerifier, RevenueCatVerifier>();
                 services.AddScoped<CommerceService>();
+                        services.AddSingleton<IPhotoProvider>(photoProvider);
+                        services.AddScoped<PhotoLifecycle>();
+                        services.AddScoped<PhotoCleanup>();
+                        services.AddScoped<LegacyPhotoAdoption>();
             services.AddSingleton<MessageSendLimiter>();
             services.AddAuthenticationProtection();
             services.AddSignalR();
@@ -403,6 +408,56 @@ try
     Check(hiddenSummary.GetProperty("totalCount").GetInt32() == 1 && hiddenSummary.GetProperty("hiddenCount").GetInt32() == 1,
         "PostgreSQL hidden likes summary must count a regular incoming like");
     Console.WriteLine("PASS: real PostgreSQL concurrent Boost activation, credit replay and Superlike debit.");
+    // Real PostgreSQL owner locks, upload leases, unique-key conflicts and cleanup claims.
+    var photoOwner = new User { PasswordHash = BCrypt.Net.BCrypt.HashPassword("photo-closure-password") };
+    var secondOwner = new User();
+    await using (var db = new AppDbContext(options)) { db.Users.AddRange(photoOwner, secondOwner); await db.SaveChangesAsync(); }
+    var photoBytes = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0 };
+    async Task<PhotoView> UploadPhoto(Guid owner, Guid id) {
+        await using var db = new AppDbContext(options);
+        return await new PhotoLifecycle(db, photoProvider).Upload(owner, id, photoBytes, default);
+    }
+    var duplicateId = Guid.NewGuid();
+    var duplicates = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => UploadPhoto(photoOwner.Id, duplicateId)));
+    Check(duplicates.All(p => p.State is PhotoStates.Ready or PhotoStates.Uploading) && photoProvider.Uploads == 1, "Concurrent duplicate uploads did not share one durable reservation");
+    var otherId = Guid.NewGuid();
+    async Task<int> ReserveCollision(Guid owner) {
+        try { await UploadPhoto(owner, otherId); return 200; }
+        catch (PhotoOperationException ex) { return ex.Status; }
+    }
+    var collision = await Task.WhenAll(ReserveCollision(photoOwner.Id), ReserveCollision(secondOwner.Id));
+    Check(collision.Count(s => s == 200) == 1 && collision.Any(s => s is 404 or 409), "Cross-owner UUID conflict must be a controlled response");
+    var attached = await UploadPhoto(photoOwner.Id, Guid.NewGuid());
+    using var photoClient = Client(photoOwner.Id);
+    Check((await photoClient.PostAsJsonAsync("/me/profile", new { displayName = "Photo test", age = 25, gender = "Man", photoUrls = new[] { (await UploadPhoto(photoOwner.Id, duplicateId)).Url, attached.Url }.Distinct().ToArray() })).IsSuccessStatusCode,
+        "Owned photos could not be attached in PostgreSQL");
+    // Pick an unlinked draft, expire it, and race two worker instances.
+    var draft = await UploadPhoto(photoOwner.Id, Guid.NewGuid());
+    await using (var db = new AppDbContext(options)) { (await db.OwnedPhotos.FindAsync(draft.Id))!.NextAttemptUtc = DateTime.UtcNow.AddSeconds(-1); await db.SaveChangesAsync(); }
+    async Task SweepPhotos() {
+        await using var db = new AppDbContext(options);
+        await new PhotoCleanup(db, new PhotoLifecycle(db, photoProvider), photoProvider, Microsoft.Extensions.Logging.Abstractions.NullLogger<PhotoCleanup>.Instance).RunOnce();
+    }
+    await Task.WhenAll(SweepPhotos(), SweepPhotos());
+    Check(photoProvider.Deletions.GetValueOrDefault(draft.Id) == 1, "Two PostgreSQL workers deleted the same claimed image");
+    var uploadStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var finishUpload = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var inflightId = Guid.NewGuid();
+    photoProvider.BeforeUpload = async photo => { if (photo.Id == inflightId) { uploadStarted.TrySetResult(); await finishUpload.Task; } };
+    var inflight = UploadPhoto(photoOwner.Id, inflightId);
+    await uploadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    var photoClosure = await photoClient.PostAsJsonAsync("/me/account/removal", new { password = "photo-closure-password", confirm = true });
+    Check(photoClosure.StatusCode == HttpStatusCode.Accepted, "In-flight provider call held a lock that blocked account closure");
+    finishUpload.TrySetResult();
+    try { await inflight; throw new Exception("A closed account upload was resurrected"); }
+    catch (PhotoOperationException ex) { Check(ex.Status == 503, "Unexpected retired upload status"); }
+    photoProvider.BeforeUpload = null;
+    await SweepPhotos(); await SweepPhotos();
+    await using (var db = new AppDbContext(options)) {
+        Check(!await db.OwnedPhotos.AnyAsync(p => p.UserId == photoOwner.Id && p.State != PhotoStates.Deleted), "Closed account owned images were not cleaned");
+        Check((await db.AccountRemovalRequests.SingleAsync(r => r.FormerUserId == photoOwner.Id)).ExternalAssetsReviewed, "Owned image erasure completion was not persisted");
+    }
+    Console.WriteLine("PASS: PostgreSQL concurrent photo uploads, cross-owner UUID conflict, two-worker cleanup and closure during upload.");
     await using (var db = new AppDbContext(options)) {
         (await db.Users.SingleAsync(u => u.Id == concurrentSender.Id)).PasswordHash = BCrypt.Net.BCrypt.HashPassword("closure-test-password");
         await db.SaveChangesAsync();
@@ -449,4 +504,20 @@ static async Task Until(Func<bool> condition, TimeSpan timeout)
     var clock = Stopwatch.StartNew();
     while (!condition() && clock.Elapsed < timeout) await Task.Delay(20);
     Check(condition(), "Timed out waiting for live delivery");
+}
+
+sealed class TestPhotoProvider : IPhotoProvider
+{
+    public bool Enabled => true;
+    public string CloudName => "test-cloud";
+    public int Uploads;
+    public ConcurrentDictionary<Guid, int> Deletions = new();
+    public Func<OwnedPhoto, Task>? BeforeUpload;
+    public async Task<VerifiedPhoto> Upload(OwnedPhoto photo, byte[] bytes, CancellationToken cancellation) {
+        Interlocked.Increment(ref Uploads);
+        if (BeforeUpload != null) await BeforeUpload(photo);
+        return new("asset-" + photo.Id, photo.PublicId!, $"https://res.cloudinary.com/test-cloud/image/upload/v1/{photo.PublicId}.png");
+    }
+    public Task Delete(OwnedPhoto photo, CancellationToken cancellation) { Deletions.AddOrUpdate(photo.Id, 1, (_, count) => count + 1); return Task.CompletedTask; }
+    public Task<VerifiedPhoto?> InspectLegacy(string id, CancellationToken cancellation) => Task.FromResult<VerifiedPhoto?>(null);
 }

@@ -96,6 +96,12 @@ namespace Zullo.Api
             builder.Services.AddHttpClient<ICommerceVerifier, RevenueCatVerifier>(client => client.Timeout = TimeSpan.FromSeconds(12));
             builder.Services.AddScoped<CommerceService>();
             builder.Services.AddHostedService<CommerceReconciliation>();
+            builder.Services.AddHttpClient<IPhotoProvider, CloudinaryPhotoProvider>(client => client.Timeout = TimeSpan.FromSeconds(50))
+                .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false }).RemoveAllLoggers();
+            builder.Services.AddScoped<PhotoLifecycle>();
+            builder.Services.AddScoped<PhotoCleanup>();
+            builder.Services.AddScoped<LegacyPhotoAdoption>();
+            builder.Services.AddHostedService<PhotoCleanupWorker>();
 
             // ================================
             //  JWT AUTHENTICATION (NYTT)

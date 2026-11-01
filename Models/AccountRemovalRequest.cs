@@ -8,5 +8,6 @@ public class AccountRemovalRequest
     public Guid FormerUserId { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public List<string> PhotoUrls { get; set; } = new();
+    public DateTime? LastCleanupCheckUtc { get; set; }
     public bool ExternalAssetsReviewed { get; set; }
 }
