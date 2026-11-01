@@ -44,6 +44,8 @@ public class RevenueCatVerifier(HttpClient client, IConfiguration config, IHostE
         {
             var product = premium.GetProperty("product_identifier").GetString()!;
             if (product.Split(':')[0] == "zullo_premium_monthly" && subscriber.GetProperty("subscriptions").TryGetProperty(product, out var subscription) &&
+                subscription.TryGetProperty("store", out var subscriptionStore) &&
+                subscriptionStore.GetString() is "app_store" or "play_store" &&
                 (!subscription.GetProperty("is_sandbox").GetBoolean() || sandboxAllowed))
             {
                 expires = Date(premium, "expires_date");

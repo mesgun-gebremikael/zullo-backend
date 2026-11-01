@@ -33,7 +33,7 @@ public class RevenueCatVerificationTests
             subscriber = new {
                 original_app_user_id = (owner ?? user).ToString(),
                 entitlements = new { premium = new { product_identifier = "zullo_premium_monthly", expires_date = future, purchase_date = DateTime.UtcNow.AddDays(-5).ToString("O") } },
-                subscriptions = new Dictionary<string, object> { ["zullo_premium_monthly"] = new { is_sandbox = sandbox, grace_period_expires_date = grace ? DateTime.UtcNow.AddDays(1).ToString("O") : null } },
+                subscriptions = new Dictionary<string, object> { ["zullo_premium_monthly"] = new { store = "app_store", is_sandbox = sandbox, grace_period_expires_date = grace ? DateTime.UtcNow.AddDays(1).ToString("O") : null } },
                 non_subscriptions = new Dictionary<string, object> {
                     ["zullo_superlikes_5"] = new[] { new { id = "purchase", store_transaction_id = "store-transaction", store = "app_store", is_sandbox = sandbox, is_refunded = false } },
                     ["not-a-product"] = new[] { new { id = "ignored", store = "app_store", is_sandbox = false } },
