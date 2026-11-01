@@ -31,7 +31,7 @@ try
     foreach (var entity in new object[] { user, profile })
     {
         var entityType = db.Model.FindEntityType(entity.GetType())!;
-        var properties = entityType.GetProperties().Where(p => p.Name != "InterestedIn" && p.PropertyInfo?.GetValue(entity) != null).ToArray();
+        var properties = entityType.GetProperties().Where(p => !new[] { "InterestedIn", "IsPaused", "IsClosed", "ClosedAtUtc" }.Contains(p.Name) && p.PropertyInfo?.GetValue(entity) != null).ToArray();
         var columns = string.Join(",", properties.Select(p => $"\"{p.Name}\""));
         var parameters = string.Join(",", properties.Select((_, i) => "@p" + i));
         await using var insert = new NpgsqlCommand($"INSERT INTO \"{entityType.GetTableName()}\" ({columns}) VALUES ({parameters})", connection);

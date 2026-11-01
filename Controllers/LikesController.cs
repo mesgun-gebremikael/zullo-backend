@@ -28,7 +28,7 @@ public class LikesController : ControllerBase
 
     private IQueryable<Zullo.Api.Models.Like> EligibleLikes(Guid me) => _db.Likes.AsNoTracking()
         .Where(l => l.ToUserId == me && l.FromUserId != me &&
-            _db.Profiles.Any(p => p.UserId == l.FromUserId && p.IsVisible) &&
+            _db.Profiles.Any(p => p.UserId == l.FromUserId && p.IsVisible && p.User != null && !p.User.IsPaused && !p.User.IsClosed) &&
             !_db.Matches.Any(m => (m.UserAId == me && m.UserBId == l.FromUserId) || (m.UserBId == me && m.UserAId == l.FromUserId)) &&
             !_db.Blocks.Any(b => (b.FromUserId == me && b.BlockedUserId == l.FromUserId) || (b.FromUserId == l.FromUserId && b.BlockedUserId == me)));
 

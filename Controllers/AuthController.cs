@@ -116,7 +116,7 @@ namespace Zullo.Api.Controllers
             // Perform password work for unknown/passwordless accounts as well.
             var hash = string.IsNullOrWhiteSpace(user?.PasswordHash) ? DummyPasswordHash : user.PasswordHash;
             var validPassword = BCrypt.Net.BCrypt.Verify(password, hash);
-            if (user == null || string.IsNullOrWhiteSpace(user.PasswordHash) || !validPassword)
+            if (user == null || user.IsClosed || string.IsNullOrWhiteSpace(user.PasswordHash) || !validPassword)
             {
                 return Unauthorized(new ErrorMessageResponseDto
                 {

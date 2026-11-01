@@ -43,6 +43,7 @@ public class BlocksController : ControllerBase
         if (other == Guid.Empty || other == me) return BadRequest();
         if (!await _db.Users.AnyAsync(u => u.Id == other)) return NotFound();
         await using var transaction = await RelationTransaction.Begin(_db, me, other);
+        if (!await _db.Users.AnyAsync(u => u.Id == other && !u.IsClosed)) return NotFound();
         if (!await _db.Blocks.AnyAsync(b => b.FromUserId == me && b.BlockedUserId == other))
             _db.Blocks.Add(new Block { Id = Guid.NewGuid(), FromUserId = me, BlockedUserId = other });
         await ResetSwipes(me, other);

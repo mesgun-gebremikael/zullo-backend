@@ -35,7 +35,9 @@ public class CommerceController(AppDbContext db, CommerceService commerce, IConf
         await commerce.State(user, cancellation: cancellation);
         await using var transaction = await commerce.Begin(user);
         var account = await commerce.Account(user);
-        if (!await db.Profiles.AnyAsync(p => p.UserId == user && p.IsVisible, cancellation))
+        if (await db.Users.AnyAsync(u => u.Id == user && u.IsPaused, cancellation))
+            return Conflict(new { message = "Återaktivera kontot innan du aktiverar Boost." });
+        if (!await db.Profiles.AnyAsync(p => p.UserId == user && p.IsVisible && p.User != null && !p.User.IsPaused && !p.User.IsClosed, cancellation))
             return Conflict(new { message = "Slutför din profil med minst två bilder innan du aktiverar Boost." });
         if (account.BoostUntilUtc > DateTime.UtcNow) return Conflict(new { message = "En Boost är redan aktiv." });
         if (!CommerceService.ConsumeBoost(account)) return StatusCode(402, new { message = "Du har inga Boosts kvar." });

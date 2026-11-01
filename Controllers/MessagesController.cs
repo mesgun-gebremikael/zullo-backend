@@ -121,12 +121,9 @@ public class MessagesController : ControllerBase
         }
 
         await using var deliveryTransaction = _db.Database.IsNpgsql()
-            ? await _db.Database.BeginTransactionAsync() : null;
+            ? await RelationTransaction.Begin(_db, meId, dto.ToUserId) : null;
         if (deliveryTransaction != null)
         {
-            var pair = string.CompareOrdinal(meId.ToString(), dto.ToUserId.ToString()) < 0
-                ? $"{meId}:{dto.ToUserId}" : $"{dto.ToUserId}:{meId}";
-            await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({pair}, 0))");
             if (await _userRelationService.IsBlockedAsync(meId, dto.ToUserId) ||
                 !await _userRelationService.IsMatchedAsync(meId, dto.ToUserId))
                 return StatusCode(403, new ErrorMessageResponseDto { Message = "You cannot access this conversation." });
@@ -207,7 +204,7 @@ public class MessagesController : ControllerBase
 
         var receiver = await _db.Users
             .AsNoTracking()
-            .Where(u => u.Id == dto.ToUserId)
+            .Where(u => u.Id == dto.ToUserId && !u.IsClosed)
             .Select(u => new { u.DeviceToken })
             .FirstOrDefaultAsync();
 

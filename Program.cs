@@ -106,7 +106,7 @@ namespace Zullo.Api
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(options =>
                 {
-                    options.Events = new JwtBearerEvents { OnMessageReceived = ChatBearerAuthentication.ReadHubToken };
+                    options.Events = new JwtBearerEvents { OnMessageReceived = ChatBearerAuthentication.ReadHubToken, OnTokenValidated = ChatBearerAuthentication.ValidateAccount };
                     options.TokenValidationParameters = new TokenValidationParameters
                     {
                         ValidateIssuer = false,
