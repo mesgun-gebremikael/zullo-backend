@@ -457,7 +457,31 @@ try
         Check(!await db.OwnedPhotos.AnyAsync(p => p.UserId == photoOwner.Id && p.State != PhotoStates.Deleted), "Closed account owned images were not cleaned");
         Check((await db.AccountRemovalRequests.SingleAsync(r => r.FormerUserId == photoOwner.Id)).ExternalAssetsReviewed, "Owned image erasure completion was not persisted");
     }
-    Console.WriteLine("PASS: PostgreSQL concurrent photo uploads, cross-owner UUID conflict, two-worker cleanup and closure during upload.");
+    var legacyOwner = new User { IsClosed = true };
+    var legacyUrls = new List<string> {
+        "https://res.cloudinary.com/test-cloud/image/upload/v42/zullo_profiles/legacy-check.jpg",
+        "https://res.cloudinary.com/test-cloud/image/upload/f_auto,q_auto,w_1080,c_limit/v42/zullo_profiles/legacy-check.jpg"
+    };
+    await using (var db = new AppDbContext(options)) {
+        db.Users.Add(legacyOwner); db.AccountRemovalRequests.Add(new AccountRemovalRequest { FormerUserId = legacyOwner.Id, PhotoUrls = legacyUrls }); await db.SaveChangesAsync();
+    }
+    await SweepPhotos();
+    await using (var db = new AppDbContext(options)) {
+        var adoption = new LegacyPhotoAdoption(db, new PhotoLifecycle(db, photoProvider), photoProvider);
+        var plan = await adoption.Plan(50);
+        Check(plan.Entries.Any(e => e.UserId == legacyOwner.Id && e.Urls.Count == 2), "Legacy aliases were not grouped into one reviewed provider identity");
+        await adoption.Apply(plan, LegacyPhotoAdoption.Digest(LegacyPhotoAdoption.Serialize(plan)));
+    }
+    await SweepPhotos(); await SweepPhotos();
+    await using (var db = new AppDbContext(options)) {
+        var legacyPhoto = await db.OwnedPhotos.SingleAsync(p => p.UserId == legacyOwner.Id);
+        var legacyRequest = await db.AccountRemovalRequests.SingleAsync(r => r.FormerUserId == legacyOwner.Id);
+        Check(legacyPhoto.State == PhotoStates.Deleted && legacyPhoto.Url == null && legacyPhoto.Aliases.Count == 0,
+            "Legacy image aliases survived erasure in PostgreSQL JSONB storage");
+        Check(legacyRequest.ExternalAssetsReviewed && legacyRequest.PhotoUrls.Count == 0,
+            "Legacy request URLs survived erasure or were reimported after cleanup");
+    }
+    Console.WriteLine("PASS: PostgreSQL concurrent photo uploads, cross-owner UUID conflict, two-worker cleanup, closure during upload and reviewed legacy JSONB erasure.");
     await using (var db = new AppDbContext(options)) {
         (await db.Users.SingleAsync(u => u.Id == concurrentSender.Id)).PasswordHash = BCrypt.Net.BCrypt.HashPassword("closure-test-password");
         await db.SaveChangesAsync();
@@ -519,5 +543,5 @@ sealed class TestPhotoProvider : IPhotoProvider
         return new("asset-" + photo.Id, photo.PublicId!, $"https://res.cloudinary.com/test-cloud/image/upload/v1/{photo.PublicId}.png");
     }
     public Task Delete(OwnedPhoto photo, CancellationToken cancellation) { Deletions.AddOrUpdate(photo.Id, 1, (_, count) => count + 1); return Task.CompletedTask; }
-    public Task<VerifiedPhoto?> InspectLegacy(string id, CancellationToken cancellation) => Task.FromResult<VerifiedPhoto?>(null);
+    public Task<VerifiedPhoto?> InspectLegacy(string id, CancellationToken cancellation) => Task.FromResult<VerifiedPhoto?>(new("legacy-" + id, id, $"https://res.cloudinary.com/test-cloud/image/upload/v42/{id}.jpg"));
 }

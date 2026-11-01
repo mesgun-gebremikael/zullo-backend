@@ -41,7 +41,8 @@ public class LegacyPhotoAdoption(AppDbContext db, PhotoLifecycle lifecycle, IPho
         var refs = await References();
         var groups = refs.Select(r => new { Ref = r, Id = PublicId(r.Url, provider.CloudName) }).Where(r => r.Id != null).GroupBy(r => r.Id!);
         var entries = new List<LegacyPhotoEntry>();
-        var reviewRequired = refs.Count(r => PublicId(r.Url, provider.CloudName) == null);
+        var managed = await db.OwnedPhotos.AsNoTracking().Where(p => p.PublicId != null && p.ProviderAssetId != null && p.LegacyApprovedAtUtc == null && p.State != PhotoStates.Review && p.State != PhotoStates.Deleted).ToListAsync(cancellation);
+        var reviewRequired = refs.Count(r => PublicId(r.Url, provider.CloudName) == null && !managed.Any(p => p.UserId == r.User && PhotoLifecycle.Matches(p, r.Url)));
         foreach (var group in groups.OrderBy(g => g.Key, StringComparer.Ordinal)) {
             var owners = group.Select(r => r.Ref.User).Distinct().ToList();
             if (owners.Count != 1) { reviewRequired++; continue; }

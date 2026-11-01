@@ -196,6 +196,14 @@ public class PhotoManagementTests
         var request = await db.AccountRemovalRequests.SingleAsync(); Assert.True(request.ExternalAssetsReviewed); Assert.Empty(request.PhotoUrls);
     }
     [Fact]
+    public async Task VerifiedManagedUploadsDoNotBecomeLegacyReviewWarnings()
+    {
+        var provider = new Provider(); await using var app = await Start(provider); await using var db = app.Db();
+        db.OwnedPhotos.Add(Draft(app.A, provider)); await db.SaveChangesAsync();
+        var plan = await new LegacyPhotoAdoption(db, new PhotoLifecycle(db, provider), provider).Plan(50);
+        Assert.Empty(plan.Entries); Assert.Equal(0, plan.ReviewRequired);
+    }
+    [Fact]
     public async Task SharedLegacyAssetAndForeignUrlsAreNeverAutomaticallyAdopted()
     {
         var provider = new Provider(); await using var app = await Start(provider); await using var db = app.Db();

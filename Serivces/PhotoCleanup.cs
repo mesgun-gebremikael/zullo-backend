@@ -57,9 +57,9 @@ public class PhotoCleanup(AppDbContext db, PhotoLifecycle lifecycle, IPhotoProvi
                 if (error == null) {
                     var resolvedUrls = photo.Aliases.Append(photo.Url ?? "").ToHashSet(StringComparer.Ordinal);
                     var erasure = await db.AccountRemovalRequests.SingleOrDefaultAsync(r => r.FormerUserId == photo.UserId, cancellation);
-                    if (erasure != null) erasure.PhotoUrls.RemoveAll(url => resolvedUrls.Contains(url));
+                    if (erasure != null) erasure.PhotoUrls = erasure.PhotoUrls.Where(url => !resolvedUrls.Contains(url)).ToList();
                     photo.State = PhotoStates.Deleted; photo.DeletedAtUtc = DateTime.UtcNow;
-                    photo.Url = null; photo.Aliases.Clear(); photo.FileHash = "";
+                    photo.Url = null; photo.Aliases = new(); photo.FileHash = "";
                 } else if (error is "ownership_mismatch" or "invalid_legacy_namespace") {
                     photo.State = PhotoStates.Review;
                 } else {
@@ -75,7 +75,7 @@ public class PhotoCleanup(AppDbContext db, PhotoLifecycle lifecycle, IPhotoProvi
             await using var transaction = await lifecycle.OwnerTransaction(request.FormerUserId);
             var current = await db.AccountRemovalRequests.SingleAsync(r => r.Id == request.Id, cancellation);
             if (!await db.OwnedPhotos.AnyAsync(p => p.UserId == request.FormerUserId && p.State != PhotoStates.Deleted, cancellation)) {
-                current.ExternalAssetsReviewed = true; current.PhotoUrls.Clear();
+                current.ExternalAssetsReviewed = true; current.PhotoUrls = new();
                 await db.SaveChangesAsync(cancellation);
             }
             await transaction.CommitAsync(cancellation);
