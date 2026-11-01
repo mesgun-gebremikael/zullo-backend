@@ -117,16 +117,21 @@ public class MatchesController : ControllerBase
 
         var lastMap = lastMsgs.ToDictionary(x => x.otherUserId, x => x);
 
+        var activity = await _db.CommerceAccounts.AsNoTracking().Where(a => otherIds.Contains(a.UserId)).ToDictionaryAsync(a => a.UserId);
         // 5) Slå ihop profiler + last message i ett svar till frontend (C#)
         var result = profilesRaw.Select(p =>
         {
             lastMap.TryGetValue(p.UserId, out var last);
+            activity.TryGetValue(p.UserId, out var account);
+            var lastActivity = CommerceService.Premium(account) && account!.HideActivity ? null : account?.LastActivityUtc;
 
             return new MatchListItemDto
             {
                 UserId = p.UserId,
                 DisplayName = p.DisplayName,
                 Age = p.Age,
+                LastActivityUtc = lastActivity,
+                Online = lastActivity > DateTime.UtcNow.AddSeconds(-90),
 
                 // jsonb-safe: ta första bilden om den finns
                 PhotoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",

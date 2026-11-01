@@ -48,6 +48,58 @@ namespace Zullo.Api.Migrations
                     b.ToTable("Blocks");
                 });
 
+            modelBuilder.Entity("Zullo.Api.Models.CommerceAccount", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("BoostAllowancePeriodUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("BoostUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("HideActivity")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("IncludedBoosts")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("IncludedSuperLikes")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Incognito")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastActivityUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastVerifiedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextSuperLikeRefreshUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("PremiumPeriodStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("PremiumUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("ProviderSnapshotMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("PurchasedBoosts")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PurchasedSuperLikes")
+                        .HasColumnType("integer");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("CommerceAccounts");
+                });
+
             modelBuilder.Entity("Zullo.Api.Models.Like", b =>
                 {
                     b.Property<Guid>("Id")
@@ -59,6 +111,9 @@ namespace Zullo.Api.Migrations
 
                     b.Property<Guid>("FromUserId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("IsSuperLike")
+                        .HasColumnType("boolean");
 
                     b.Property<Guid>("ToUserId")
                         .HasColumnType("uuid");
@@ -293,6 +348,36 @@ namespace Zullo.Api.Migrations
                     b.ToTable("Profiles");
                 });
 
+            modelBuilder.Entity("Zullo.Api.Models.PurchaseGrant", b =>
+                {
+                    b.Property<string>("TransactionKey")
+                        .HasMaxLength(220)
+                        .HasColumnType("character varying(220)");
+
+                    b.Property<int>("Boosts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProductId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("Refunded")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("SuperLikes")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TransactionKey");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PurchaseGrants");
+                });
+
             modelBuilder.Entity("Zullo.Api.Models.Report", b =>
                 {
                     b.Property<Guid>("Id")
@@ -416,6 +501,15 @@ namespace Zullo.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Zullo.Api.Models.CommerceAccount", b =>
+                {
+                    b.HasOne("Zullo.Api.Models.User", null)
+                        .WithOne()
+                        .HasForeignKey("Zullo.Api.Models.CommerceAccount", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Zullo.Api.Models.Like", b =>
                 {
                     b.HasOne("Zullo.Api.Models.User", null)
@@ -470,6 +564,15 @@ namespace Zullo.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Zullo.Api.Models.PurchaseGrant", b =>
+                {
+                    b.HasOne("Zullo.Api.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Zullo.Api.Models.Report", b =>

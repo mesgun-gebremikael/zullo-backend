@@ -93,6 +93,9 @@ namespace Zullo.Api
             builder.Services.AddAuthenticationProtection();
             builder.Services.AddScoped<PushNotificationService>();
             builder.Services.AddSingleton<MessageSendLimiter>();
+            builder.Services.AddHttpClient<ICommerceVerifier, RevenueCatVerifier>(client => client.Timeout = TimeSpan.FromSeconds(12));
+            builder.Services.AddScoped<CommerceService>();
+            builder.Services.AddHostedService<CommerceReconciliation>();
 
             // ================================
             //  JWT AUTHENTICATION (NYTT)

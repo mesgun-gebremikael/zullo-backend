@@ -7,6 +7,8 @@ public class MatchListItemDto
 
     public string DisplayName { get; set; } = "";
     public int Age { get; set; }
+    public DateTime? LastActivityUtc { get; set; }
+    public bool Online { get; set; }
 
     // Första profilbilden som visas i matches-listan
     public string PhotoUrl { get; set; } = "";

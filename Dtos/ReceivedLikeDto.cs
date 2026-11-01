@@ -4,6 +4,7 @@ public class ReceivedLikeDto
 {
     // Den användare som har gillat mig
     public Guid UserId { get; set; }
+    public bool IsSuperLike { get; set; }
 
     public string DisplayName { get; set; } = "";
     public int Age { get; set; }

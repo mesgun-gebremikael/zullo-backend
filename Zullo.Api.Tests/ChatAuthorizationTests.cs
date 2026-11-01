@@ -244,6 +244,8 @@ public class ChatAuthorizationTests
                     services.AddDbContext<AppDbContext>(o => o.UseSqlite(app._connection));
                     services.AddScoped<UserRelationService>();
                     services.AddScoped<LikeLimitService>();
+                    services.AddHttpClient<ICommerceVerifier, RevenueCatVerifier>();
+                    services.AddScoped<CommerceService>();
                     services.AddScoped<PushNotificationService>();
                     services.AddSingleton<MessageSendLimiter>();
                     services.AddSignalR();

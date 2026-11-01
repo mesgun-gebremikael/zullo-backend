@@ -19,12 +19,16 @@ public class SwipeController : ControllerBase
     private readonly AppDbContext _db;
     private readonly LikeLimitService _likeLimit;
     private readonly UserRelationService _userRelationService;
+    private readonly CommerceService? _commerce;
+    private readonly Microsoft.AspNetCore.SignalR.IHubContext<Zullo.Api.Hubs.ChatHub>? _hub;
 
-    public SwipeController(AppDbContext db, LikeLimitService likeLimit, UserRelationService userRelationService)
+    public SwipeController(AppDbContext db, LikeLimitService likeLimit, UserRelationService userRelationService, CommerceService? commerce = null, Microsoft.AspNetCore.SignalR.IHubContext<Zullo.Api.Hubs.ChatHub>? hub = null)
     {
         _db = db;
         _likeLimit = likeLimit;
         _userRelationService = userRelationService;
+        _commerce = commerce;
+        _hub = hub;
     }
 
   
@@ -112,10 +116,15 @@ public class SwipeController : ControllerBase
             _ => null // Existing profiles keep their previous unfiltered behavior.
         };
 
+        var now = DateTime.UtcNow;
+        var superLikedMe = await _db.Likes.AsNoTracking().Where(l => l.ToUserId == meId && l.IsSuperLike).Select(l => l.FromUserId).ToListAsync();
+        var boosted = await _db.CommerceAccounts.AsNoTracking().Where(a => a.BoostUntilUtc > now).Select(a => a.UserId).ToListAsync();
         // Hämta kandidater (SQL slutar här)
         var candidates = await _db.Profiles.AsNoTracking()
             // Endast profiler som är markerade synliga
             .Where(p => p.IsVisible)
+            .Where(p => !_db.CommerceAccounts.Any(a => a.UserId == p.UserId && a.Incognito && a.PremiumUntilUtc > now) ||
+                _db.Likes.Any(l => l.FromUserId == p.UserId && l.ToUserId == meId))
             .Where(p => preferredGender == null || p.Gender == preferredGender)
 
             // ❌ FEL (borttagen):
@@ -124,6 +133,8 @@ public class SwipeController : ControllerBase
 
             .Where(p => !excluded.Contains(p.UserId))
             .Where(p => p.Age >= minAge && p.Age <= maxAge)
+            .OrderByDescending(p => superLikedMe.Contains(p.UserId))
+            .ThenByDescending(p => boosted.Contains(p.UserId))
             .Take(200)
             .ToListAsync();
 
@@ -133,6 +144,7 @@ public class SwipeController : ControllerBase
             .Select(p => new SwipeProfileDto
             {
                 UserId = p.UserId,
+                SuperLikedYou = superLikedMe.Contains(p.UserId),
 
                 // skyddar mot null och konstiga värden
                 DisplayName = (p.DisplayName ?? "").Trim(),
@@ -188,7 +200,9 @@ public class SwipeController : ControllerBase
             // .Where(x => x.PhotoUrls.Count > 0)
 
             .Where(x => x.DistanceKm <= myRadiusKm)
-            .OrderBy(x => x.DistanceKm)
+            .OrderByDescending(x => x.SuperLikedYou)
+            .ThenByDescending(x => boosted.Contains(x.UserId))
+            .ThenBy(x => x.DistanceKm)
             .Take(take)
             .ToList();
 
@@ -212,7 +226,12 @@ public class SwipeController : ControllerBase
             });
         }
 
+        if (dto.TargetUserId == meId || dto.TargetUserId == Guid.Empty) return BadRequest();
+        if (!await _db.Users.AnyAsync(u => u.Id == dto.TargetUserId)) return NotFound();
+        if (_commerce != null) await _commerce.State(meId);
         await using var relationTransaction = await RelationTransaction.Begin(_db, meId, dto.TargetUserId);
+
+        if (_commerce != null) await _commerce.Lock(meId);
 
         // A direct API request must respect blocks just like the swipe feed.
         if (await _userRelationService.IsBlockedAsync(meId, dto.TargetUserId))
@@ -243,10 +262,20 @@ public class SwipeController : ControllerBase
         var already = await _db.Likes.AnyAsync(l =>
             l.FromUserId == meId && l.ToUserId == dto.TargetUserId);
 
+        if (already && dto.SuperLike && !await _db.Likes.AnyAsync(l => l.FromUserId == meId && l.ToUserId == dto.TargetUserId && l.IsSuperLike))
+            return Conflict(new { message = "Du har redan gillat profilen." });
         if (!already)
         {
+            if (dto.SuperLike)
+            {
+                if (!await _db.Profiles.AnyAsync(p => p.UserId == dto.TargetUserId && p.IsVisible)) return NotFound();
+                if (_commerce == null) return StatusCode(503);
+                await _commerce.Lock(meId);
+                var account = await _commerce.Account(meId);
+                if (!CommerceService.ConsumeSuperLike(account)) return StatusCode(402, new { message = "Du har inga Superlikes kvar." });
+            }
             // 2) bara om det är en ny like -> konsumera like
-            var ok = await _likeLimit.TryConsumeLikeAsync(meId);
+            var ok = dto.SuperLike || await _likeLimit.TryConsumeLikeAsync(meId);
             if (!ok)
                 return StatusCode(429, new ErrorMessageResponseDto
                 {
@@ -257,7 +286,8 @@ public class SwipeController : ControllerBase
             _db.Likes.Add(new Like
             {
                 FromUserId = meId,
-                ToUserId = dto.TargetUserId
+                ToUserId = dto.TargetUserId,
+                IsSuperLike = dto.SuperLike
             });
             await _db.SaveChangesAsync();
         }
@@ -284,6 +314,7 @@ public class SwipeController : ControllerBase
             }
 
             await relationTransaction.CommitAsync();
+            if (dto.SuperLike && !already) await NotifySuperLike(meId, dto.TargetUserId);
             return Ok(new LikeResponseDto
             {
                 Matched = true
@@ -291,6 +322,7 @@ public class SwipeController : ControllerBase
         }
 
         await relationTransaction.CommitAsync();
+        if (dto.SuperLike && !already) await NotifySuperLike(meId, dto.TargetUserId);
         return Ok(new LikeResponseDto
         {
             Matched = false
@@ -310,6 +342,7 @@ public class SwipeController : ControllerBase
         }
 
         await using var relationTransaction = await RelationTransaction.Begin(_db, meId, dto.TargetUserId);
+        if (_commerce != null) await _commerce.Lock(meId);
         if (await _userRelationService.IsBlockedAsync(meId, dto.TargetUserId)) return StatusCode(403);
 
         // Anti-spam: max 1 skip per 500 ms
@@ -347,4 +380,49 @@ public class SwipeController : ControllerBase
             Skipped = true
         });
     }
+    private async Task NotifySuperLike(Guid from, Guid to)
+    {
+        try
+        {
+            if (_hub != null) await Microsoft.AspNetCore.SignalR.ClientProxyExtensions.SendAsync(
+                _hub.Clients.User(to.ToString()), "SuperLikeReceived", new { senderUserId = from });
+            var token = await _db.Users.AsNoTracking().Where(u => u.Id == to).Select(u => u.DeviceToken).SingleOrDefaultAsync();
+            if (!string.IsNullOrWhiteSpace(token))
+                await FirebaseAdmin.Messaging.FirebaseMessaging.DefaultInstance.SendAsync(new FirebaseAdmin.Messaging.Message
+                {
+                    Token = token,
+                    Notification = new FirebaseAdmin.Messaging.Notification { Title = "ZULLO ⭐", Body = "Någon har supergillat dig. Öppna Swipa för att se profilen." },
+                    Android = new FirebaseAdmin.Messaging.AndroidConfig { Priority = FirebaseAdmin.Messaging.Priority.High, Notification = new FirebaseAdmin.Messaging.AndroidNotification { ChannelId = "messages", Sound = "default" } },
+                    Data = new Dictionary<string, string> { ["type"] = "super_like", ["recipientUserId"] = to.ToString() }
+                });
+        }
+        catch (Exception ex) { HttpContext.RequestServices.GetService<ILogger<SwipeController>>()?.LogWarning(ex, "Superlike notification could not be delivered."); }
+    }
+
+    [HttpPost("rewind")]
+    public async Task<IActionResult> Rewind()
+    {
+        if (!CurrentUserService.TryGetUserId(User, out var me)) return Unauthorized();
+        if (_commerce == null) return StatusCode(503);
+        await _commerce.State(me);
+        var lastLike = await _db.Likes.AsNoTracking().Where(l => l.FromUserId == me).OrderByDescending(l => l.CreatedAtUtc).FirstOrDefaultAsync();
+        var lastSkip = await _db.Skips.AsNoTracking().Where(l => l.FromUserId == me).OrderByDescending(l => l.CreatedAtUtc).FirstOrDefaultAsync();
+        var undoLike = lastLike != null && (lastSkip == null || lastLike.CreatedAtUtc >= lastSkip.CreatedAtUtc);
+        var target = undoLike ? lastLike!.ToUserId : lastSkip?.ToUserId;
+        if (target == null) return NotFound(new { message = "Det finns ingen swipe att ångra." });
+        await using var transaction = await RelationTransaction.Begin(_db, me, target.Value);
+        await _commerce.Lock(me);
+        var newestLike = await _db.Likes.AsNoTracking().Where(l => l.FromUserId == me).OrderByDescending(l => l.CreatedAtUtc).Select(l => (Guid?)l.Id).FirstOrDefaultAsync();
+        var newestSkip = await _db.Skips.AsNoTracking().Where(l => l.FromUserId == me).OrderByDescending(l => l.CreatedAtUtc).Select(l => (Guid?)l.Id).FirstOrDefaultAsync();
+        if (newestLike != lastLike?.Id || newestSkip != lastSkip?.Id) return Conflict(new { message = "Din senaste swipe har ändrats. Försök igen." });
+        var account = await _commerce.Account(me);
+        if (!CommerceService.Premium(account)) return StatusCode(402);
+        if (await _userRelationService.IsBlockedAsync(me, target.Value) || await _userRelationService.IsMatchedAsync(me, target.Value) || (undoLike && lastLike!.IsSuperLike))
+            return Conflict(new { message = "En match eller Superlike kan inte ångras här." });
+        if (undoLike) _db.Likes.Remove(lastLike!); else _db.Skips.Remove(lastSkip!);
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return Ok(new { userId = target });
+    }
+
 }
