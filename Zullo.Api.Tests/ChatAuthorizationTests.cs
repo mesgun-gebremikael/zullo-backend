@@ -252,7 +252,7 @@ public class ChatAuthorizationTests
                     services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, NameIdentifierUserIdProvider>();
                     services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
                     {
-                        o.Events = new JwtBearerEvents { OnMessageReceived = ChatBearerAuthentication.ReadHubToken };
+                        o.Events = new JwtBearerEvents { OnMessageReceived = ChatBearerAuthentication.ReadHubToken, OnTokenValidated = ChatBearerAuthentication.ValidateAccount };
                         o.TokenValidationParameters = new TokenValidationParameters
                         {
                             ValidateIssuer = false, ValidateAudience = false, ValidateLifetime = true,

@@ -15,6 +15,7 @@ public class UserRelationService
     public async Task<bool> IsBlockedAsync(Guid meId, Guid otherUserId)
     {
         // Sant om jag blockat den andra, eller den andra blockat mig
+        if (await _db.Users.AnyAsync(u => (u.Id == meId || u.Id == otherUserId) && u.IsClosed)) return true;
         return await _db.Blocks.AnyAsync(b =>
             (b.FromUserId == meId && b.BlockedUserId == otherUserId) ||
             (b.FromUserId == otherUserId && b.BlockedUserId == meId));

@@ -6,6 +6,9 @@ namespace Zullo.Api.Models
     public class User
     {
         public Guid Id { get; set; } = Guid.NewGuid();
+        public bool IsPaused { get; set; }
+        public bool IsClosed { get; set; }
+        public DateTime? ClosedAtUtc { get; set; }
 
         // Auth identifiers (one or more can exist)
         public string? Email { get; set; }

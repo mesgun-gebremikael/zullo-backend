@@ -51,9 +51,10 @@ try
     await using (var db = new AppDbContext(options))
     {
         await db.GetService<IMigrator>().MigrateAsync("20261027231755_PreserveDiscoveryPreferences");
-        db.Users.AddRange(users);
         foreach (var user in users)
         {
+            // Seed the old schema using only columns that existed before this upgrade.
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO \"User\" (\"Id\",\"Email\",\"PasswordHash\",\"IsVerified\",\"CreatedAtUtc\",\"LikesRemaining\",\"MatchRadiusKm\",\"LikesResetAtUtc\") VALUES ({user.Id},{user.Email},{user.PasswordHash},{user.IsVerified},{user.CreatedAtUtc},{user.LikesRemaining},{user.MatchRadiusKm},{user.LikesResetAtUtc})");
             db.Profiles.Add(new Profile { UserId = user.Id, DisplayName = "Synthetic test user", Age = 25,
                 Gender = "Man", IsVisible = true,
                 PhotoUrls = new() { "https://images.example/1", "https://images.example/2" } });
@@ -111,7 +112,7 @@ try
             services.AddSingleton<IUserIdProvider, NameIdentifierUserIdProvider>();
             services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
                 {
-                o.Events = new JwtBearerEvents { OnMessageReceived = ChatBearerAuthentication.ReadHubToken };
+                o.Events = new JwtBearerEvents { OnMessageReceived = ChatBearerAuthentication.ReadHubToken, OnTokenValidated = ChatBearerAuthentication.ValidateAccount };
                 o.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = false, ValidateAudience = false, ValidateLifetime = true,
@@ -402,6 +403,34 @@ try
     Check(hiddenSummary.GetProperty("totalCount").GetInt32() == 1 && hiddenSummary.GetProperty("hiddenCount").GetInt32() == 1,
         "PostgreSQL hidden likes summary must count a regular incoming like");
     Console.WriteLine("PASS: real PostgreSQL concurrent Boost activation, credit replay and Superlike debit.");
+    await using (var db = new AppDbContext(options)) {
+        (await db.Users.SingleAsync(u => u.Id == concurrentSender.Id)).PasswordHash = BCrypt.Net.BCrypt.HashPassword("closure-test-password");
+        await db.SaveChangesAsync();
+    }
+    Check((await a.PatchAsJsonAsync("/me/account/pause", new { paused = true })).StatusCode == HttpStatusCode.OK,
+        "Pause was not persisted");
+    Check((await a.GetFromJsonAsync<SwipeFeedResponseDto>("/swipe/feed"))!.IsPaused, "Paused account was not marked paused");
+    await a.PatchAsJsonAsync("/me/account/pause", new { paused = false });
+    var closureSocket = Socket(concurrentSender.Id);
+    var accountClosed = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+    closureSocket.On<JsonElement>("AccountClosed", value => accountClosed.TrySetResult(value));
+    await closureSocket.StartAsync();
+    var editDuringClosure = a.PatchAsJsonAsync("/me/profile", new { bio = "Concurrent edit" });
+    var sendDuringClosure = b.PostAsJsonAsync("/messages/send", new { toUserId = concurrentSender.Id, text = "Concurrent close", clientMessageId = "closure-race" });
+    var closureResponse = await a.PostAsJsonAsync("/me/account/removal", new { password = "closure-test-password", confirm = true });
+    await editDuringClosure;
+    var lateMessage = await sendDuringClosure;
+    Check(lateMessage.StatusCode is HttpStatusCode.OK or HttpStatusCode.Created or HttpStatusCode.Forbidden,
+        "Concurrent message returned an unexpected account-closure result");
+    Check(closureResponse.StatusCode == HttpStatusCode.Accepted, "Account closure was not accepted");
+    await accountClosed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    Check((await a.GetAsync("/me/account")).StatusCode == HttpStatusCode.Unauthorized, "Old JWT could access a closed account");
+    await using (var db = new AppDbContext(options)) {
+        Check(await db.AccountRemovalRequests.AnyAsync(r => r.FormerUserId == concurrentSender.Id), "External asset follow-up was lost");
+        Check(!await db.Profiles.AnyAsync(p => p.UserId == concurrentSender.Id), "Closed profile remained published");
+        Check(!await db.Messages.AnyAsync(m => m.FromUserId == concurrentSender.Id || m.ToUserId == concurrentSender.Id), "Concurrent message survived account closure");
+    }
+    Console.WriteLine("PASS: PostgreSQL pause/reactivate, account closure, durable external-asset follow-up and old JWT revocation.");
     await File.WriteAllTextAsync(Environment.GetEnvironmentVariable("ZULLO_CHAT_TEST_RESULTS") ?? "/tmp/zullo-chat-load-results.json",
         JsonSerializer.Serialize(new { scenario = "In-process TestServer HTTP/WebSockets + real PostgreSQL; not a production capacity certification", results }, new JsonSerializerOptions { WriteIndented = true }));
     Console.WriteLine("PASS: migration, concurrent idempotency, authenticated live delivery, receipt cutoff, reconnect catchup, paging, load and blocked replay.");

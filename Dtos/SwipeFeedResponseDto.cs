@@ -2,6 +2,7 @@
 
 public class SwipeFeedResponseDto
 {
+    public bool IsPaused { get; set; }
     // Användarens nuvarande matchradie
     public int RadiusKm { get; set; }
 

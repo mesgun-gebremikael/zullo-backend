@@ -60,6 +60,7 @@ public class SwipeController : ControllerBase
         }
 
         var myRadiusKm = me.MatchRadiusKm;
+        if (me.IsPaused || me.IsClosed) return Ok(new SwipeFeedResponseDto { RadiusKm = myRadiusKm, Profiles = new(), IsPaused = me.IsPaused });
 
         if (minAge < 18) minAge = 18;
         if (maxAge > 100) maxAge = 100;
@@ -122,7 +123,7 @@ public class SwipeController : ControllerBase
         // Hämta kandidater (SQL slutar här)
         var candidates = await _db.Profiles.AsNoTracking()
             // Endast profiler som är markerade synliga
-            .Where(p => p.IsVisible)
+            .Where(p => !p.User!.IsPaused && !p.User.IsClosed && p.IsVisible)
             .Where(p => !_db.CommerceAccounts.Any(a => a.UserId == p.UserId && a.Incognito && a.PremiumUntilUtc > now) ||
                 _db.Likes.Any(l => l.FromUserId == p.UserId && l.ToUserId == meId))
             .Where(p => preferredGender == null || p.Gender == preferredGender)
@@ -226,10 +227,15 @@ public class SwipeController : ControllerBase
             });
         }
 
+        if (await _db.Users.AnyAsync(u => u.Id == meId && u.IsPaused))
+            return Conflict(new { message = "Återaktivera kontot innan du swipar." });
         if (dto.TargetUserId == meId || dto.TargetUserId == Guid.Empty) return BadRequest();
-        if (!await _db.Users.AnyAsync(u => u.Id == dto.TargetUserId)) return NotFound();
+        if (!await _db.Users.AnyAsync(u => u.Id == dto.TargetUserId && !u.IsPaused && !u.IsClosed)) return NotFound();
         if (_commerce != null) await _commerce.RefreshBenefitsIfSubscribed(meId);
         await using var relationTransaction = await RelationTransaction.Begin(_db, meId, dto.TargetUserId);
+        if (await _db.Users.AnyAsync(u => u.Id == meId && u.IsPaused))
+            return Conflict(new { message = "Återaktivera kontot innan du swipar." });
+        if (!await _db.Users.AnyAsync(u => u.Id == dto.TargetUserId && !u.IsPaused && !u.IsClosed)) return NotFound();
 
         if (_commerce != null) await _commerce.Lock(meId);
 
@@ -344,6 +350,9 @@ public class SwipeController : ControllerBase
         }
 
         await using var relationTransaction = await RelationTransaction.Begin(_db, meId, dto.TargetUserId);
+        if (await _db.Users.AnyAsync(u => u.Id == meId && u.IsPaused))
+            return Conflict(new { message = "Återaktivera kontot innan du swipar." });
+        if (!await _db.Users.AnyAsync(u => u.Id == dto.TargetUserId && !u.IsPaused && !u.IsClosed)) return NotFound();
         if (_commerce != null) await _commerce.Lock(meId);
         if (await _userRelationService.IsBlockedAsync(meId, dto.TargetUserId)) return StatusCode(403);
 
@@ -400,7 +409,7 @@ public class SwipeController : ControllerBase
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             if (_hub != null) await Microsoft.AspNetCore.SignalR.ClientProxyExtensions.SendAsync(
                 _hub.Clients.User(to.ToString()), "SuperLikeReceived", new { senderUserId = from }, deadline.Token);
-            var token = await _db.Users.AsNoTracking().Where(u => u.Id == to).Select(u => u.DeviceToken).SingleOrDefaultAsync();
+            var token = await _db.Users.AsNoTracking().Where(u => u.Id == to && !u.IsClosed).Select(u => u.DeviceToken).SingleOrDefaultAsync();
             if (!string.IsNullOrWhiteSpace(token))
                 await FirebaseAdmin.Messaging.FirebaseMessaging.DefaultInstance.SendAsync(new FirebaseAdmin.Messaging.Message
                 {

@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Report> Reports => Set<Report>();
     public DbSet<Block> Blocks => Set<Block>();
+    public DbSet<AccountRemovalRequest> AccountRemovalRequests => Set<AccountRemovalRequest>();
     public DbSet<CommerceAccount> CommerceAccounts => Set<CommerceAccount>();
     public DbSet<PurchaseGrant> PurchaseGrants => Set<PurchaseGrant>();
 
@@ -44,6 +45,8 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<AccountRemovalRequest>().Property(r => r.PhotoUrls).HasColumnType("jsonb");
+        modelBuilder.Entity<AccountRemovalRequest>().HasIndex(r => r.FormerUserId).IsUnique();
         modelBuilder.Entity<CommerceAccount>().HasKey(a => a.UserId);
         modelBuilder.Entity<CommerceAccount>().HasOne<User>().WithOne().HasForeignKey<CommerceAccount>(a => a.UserId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<PurchaseGrant>().HasKey(g => g.TransactionKey);

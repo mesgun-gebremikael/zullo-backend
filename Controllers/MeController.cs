@@ -81,8 +81,11 @@ namespace Zullo.Api.Controllers
 
 
 
+            await using var profileTransaction = await _db.Database.BeginTransactionAsync();
+            await AccountLifecycleLock.Shared(_db, meId);
+            if (_db.Database.IsNpgsql()) await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"User\" WHERE \"Id\" = {meId} FOR UPDATE");
             // Säkerställ att User finns (nu: riktiga userId från JWT)
-            var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == meId);
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == meId && !u.IsClosed);
             if (user == null)
             {
                 return NotFound(new ErrorMessageResponseDto
@@ -108,6 +111,7 @@ namespace Zullo.Api.Controllers
             if (dto.Has(nameof(dto.MatchRadiusKm))) user.MatchRadiusKm = dto.MatchRadiusKm!.Value;
 
             await _db.SaveChangesAsync();
+            await profileTransaction.CommitAsync();
 
             //frontend kräver minst 2 bilder för att användare ska kunna gå vidare 
             return Ok(new UpsertProfileResponseDto

@@ -23,6 +23,33 @@ namespace Zullo.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Zullo.Api.Models.AccountRemovalRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ExternalAssetsReviewed")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("FormerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<List<string>>("PhotoUrls")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FormerUserId")
+                        .IsUnique();
+
+                    b.ToTable("AccountRemovalRequests");
+                });
+
             modelBuilder.Entity("Zullo.Api.Models.Block", b =>
                 {
                     b.Property<Guid>("Id")
@@ -441,6 +468,9 @@ namespace Zullo.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ClosedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -454,6 +484,12 @@ namespace Zullo.Api.Migrations
                     b.Property<string>("GoogleSubject")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("IsClosed")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsPaused")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsVerified")
                         .HasColumnType("boolean");
