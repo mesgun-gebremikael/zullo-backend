@@ -3,6 +3,7 @@ namespace Zullo.Api.Models;
 public class CommerceAccount
 {
     public Guid UserId { get; set; }
+    public DateTime? ActivityPrivacyUntilUtc { get; set; }
     public DateTime? PremiumUntilUtc { get; set; }
     public DateTime? PremiumPeriodStartUtc { get; set; }
     public DateTime? BoostAllowancePeriodUtc { get; set; }

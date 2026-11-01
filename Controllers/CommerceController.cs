@@ -52,8 +52,8 @@ public class CommerceController(AppDbContext db, CommerceService commerce, IConf
         await commerce.State(user, cancellation: cancellation);
         await using var transaction = await commerce.Begin(user);
         var account = await commerce.Account(user);
-        if ((update.HideActivity || update.Incognito) && !CommerceService.Premium(account))
-            return StatusCode(402, new { message = "Premium krävs för den här inställningen." });
+        if ((update.HideActivity && !CommerceService.CanHideActivity(account)) || (update.Incognito && !CommerceService.Premium(account)))
+            return StatusCode(402, new { message = "Dölj aktivitet kräver eget abonnemang eller Premium. Inkognito kräver Premium." });
         account.HideActivity = update.HideActivity;
         account.Incognito = update.Incognito;
         await db.SaveChangesAsync(cancellation);
@@ -125,7 +125,7 @@ public class PresenceController(AppDbContext db, CommerceService commerce, UserR
         if (!CurrentUserService.TryGetUserId(User, out var user)) return Unauthorized();
         if (await relations.IsBlockedAsync(user, peer) || !await relations.IsMatchedAsync(user, peer)) return StatusCode(403);
         var account = await db.CommerceAccounts.AsNoTracking().SingleOrDefaultAsync(a => a.UserId == peer);
-        var last = CommerceService.Premium(account) && account!.HideActivity ? null : account?.LastActivityUtc;
+        var last = CommerceService.CanHideActivity(account) && account!.HideActivity ? null : account?.LastActivityUtc;
         return Ok(new { lastActivityUtc = last, online = last > DateTime.UtcNow.AddSeconds(-90) });
     }
 }

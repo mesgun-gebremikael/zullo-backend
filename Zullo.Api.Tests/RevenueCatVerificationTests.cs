@@ -49,6 +49,34 @@ public class RevenueCatVerificationTests
             Assert.Equal("Bearer sk_test_server_only", request.Headers.Authorization!.ToString());
         })), config, new EnvironmentStub(environment));
     }
+    [Theory]
+    [InlineData("zullo_hide_activity_monthly", "app_store", false, false, false, true)]
+    [InlineData("zullo_hide_activity_monthly:monthly", "play_store", false, false, false, true)]
+    [InlineData("wrong-product", "app_store", false, false, false, false)]
+    [InlineData("zullo_hide_activity_monthly", "promotional", false, false, false, false)]
+    [InlineData("zullo_hide_activity_monthly", "app_store", true, false, false, false)]
+    [InlineData("zullo_hide_activity_monthly", "app_store", false, true, false, false)]
+    [InlineData("zullo_hide_activity_monthly", "app_store", false, false, true, true)]
+    public async Task StandalonePrivacyRequiresItsOwnVerifiedNativeSubscription(string product, string store, bool sandbox, bool refunded, bool grace, bool expected)
+    {
+        var user = Guid.NewGuid();
+        var expiry = DateTime.UtcNow.AddDays(grace ? -1 : 20);
+        var fixture = JsonSerializer.Serialize(new {
+            request_date_ms = 1L,
+            subscriber = new {
+                original_app_user_id = user.ToString(),
+                entitlements = new { activity_privacy = new { product_identifier = product, expires_date = expiry, purchase_date = DateTime.UtcNow.AddDays(-5) } },
+                subscriptions = new Dictionary<string, object> { [product] = new { store, is_sandbox = sandbox, refunded_at = refunded ? DateTime.UtcNow.ToString("O") : null, grace_period_expires_date = grace ? DateTime.UtcNow.AddDays(1).ToString("O") : null } }
+            }
+        });
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
+            ["Commerce:Enabled"] = "true", ["Commerce:RevenueCatSecretKey"] = "sk_test_server_only", ["Commerce:WebhookAuthorization"] = new string('x', 40)
+        }).Build();
+        var result = await new RevenueCatVerifier(new HttpClient(new ProviderHandler(fixture)), config, new EnvironmentStub("Production")).Fetch(user);
+        Assert.Equal(expected, result.ActivityPrivacyUntil > DateTime.UtcNow);
+        Assert.Null(result.PremiumUntil); Assert.Empty(result.Credits);
+    }
+
     [Fact]
     public async Task OnlyServerProviderDataGrantsKnownProductsForTheAuthenticatedAccount()
     {

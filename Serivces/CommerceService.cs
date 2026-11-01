@@ -8,9 +8,9 @@ using Zullo.Api.Models;
 namespace Zullo.Api.Services;
 
 public record VerifiedCredit(string Key, string ProductId, int SuperLikes, int Boosts);
-public record VerifiedCommerce(long SnapshotMs, DateTime? PremiumUntil, DateTime? PeriodStart, List<VerifiedCredit> Credits);
+public record VerifiedCommerce(long SnapshotMs, DateTime? PremiumUntil, DateTime? PeriodStart, List<VerifiedCredit> Credits, DateTime? ActivityPrivacyUntil = null);
 public record CommerceState(bool CheckoutEnabled, bool Premium, DateTime? PremiumUntilUtc, int SuperLikes,
-    int Boosts, DateTime? BoostUntilUtc, bool HideActivity, bool Incognito);
+    int Boosts, DateTime? BoostUntilUtc, bool HideActivity, bool Incognito, bool CanHideActivity = false, DateTime? ActivityPrivacyUntilUtc = null);
 
 public interface ICommerceVerifier
 {
@@ -39,21 +39,25 @@ public class RevenueCatVerifier(HttpClient client, IConfiguration config, IHostE
         if (subscriber.GetProperty("original_app_user_id").GetString() != user.ToString())
             throw new InvalidOperationException("Purchase account does not match the signed-in account.");
         var sandboxAllowed = !environment.IsProduction() && config.GetValue<bool>("Commerce:AllowSandbox");
-        DateTime? expires = null, period = null;
-        if (subscriber.TryGetProperty("entitlements", out var entitlements) && entitlements.TryGetProperty("premium", out var premium))
+        (DateTime? Expiry, DateTime? Period) Subscription(string entitlement, string knownProduct)
         {
-            var product = premium.GetProperty("product_identifier").GetString()!;
-            if (product.Split(':')[0] == "zullo_premium_monthly" && subscriber.GetProperty("subscriptions").TryGetProperty(product, out var subscription) &&
-                subscription.TryGetProperty("store", out var subscriptionStore) &&
-                subscriptionStore.GetString() is "app_store" or "play_store" &&
-                (!subscription.GetProperty("is_sandbox").GetBoolean() || sandboxAllowed))
-            {
-                expires = Date(premium, "expires_date");
-                var grace = Date(subscription, "grace_period_expires_date") ?? Date(premium, "grace_period_expires_date");
-                if (grace > expires) expires = grace;
-                period = Date(premium, "purchase_date");
-            }
+            if (!subscriber.TryGetProperty("entitlements", out var entitlements) ||
+                !entitlements.TryGetProperty(entitlement, out var benefit)) return (null, null);
+            var product = benefit.GetProperty("product_identifier").GetString()!;
+            if (product.Split(':')[0] != knownProduct ||
+                !subscriber.TryGetProperty("subscriptions", out var subscriptions) ||
+                !subscriptions.TryGetProperty(product, out var subscription) ||
+                !subscription.TryGetProperty("store", out var store) ||
+                store.GetString() is not ("app_store" or "play_store") ||
+                (subscription.GetProperty("is_sandbox").GetBoolean() && !sandboxAllowed) ||
+                Date(subscription, "refunded_at") != null) return (null, null);
+            var expiry = Date(benefit, "expires_date");
+            var grace = Date(subscription, "grace_period_expires_date") ?? Date(benefit, "grace_period_expires_date");
+            if (grace > expiry) expiry = grace;
+            return (expiry, Date(benefit, "purchase_date"));
         }
+        var (expires, period) = Subscription("premium", "zullo_premium_monthly");
+        var (activityExpiry, _) = Subscription("activity_privacy", "zullo_hide_activity_monthly");
         var credits = new List<VerifiedCredit>();
         if (subscriber.TryGetProperty("non_subscriptions", out var purchases))
         foreach (var product in purchases.EnumerateObject())
@@ -74,7 +78,7 @@ public class RevenueCatVerifier(HttpClient client, IConfiguration config, IHostE
                 credits.Add(new VerifiedCredit($"{store}:{id}", product.Name, amounts.Item1, amounts.Item2));
             }
         }
-        return new VerifiedCommerce(root.GetProperty("request_date_ms").GetInt64(), expires, period, credits);
+        return new VerifiedCommerce(root.GetProperty("request_date_ms").GetInt64(), expires, period, credits, activityExpiry);
     }
     private static DateTime? Date(JsonElement value, string key) => value.TryGetProperty(key, out var date) && date.ValueKind == JsonValueKind.String
         ? DateTime.Parse(date.GetString()!, null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal) : null;
@@ -87,6 +91,7 @@ public class RevenueCatVerifier(HttpClient client, IConfiguration config, IHostE
 public class CommerceService(AppDbContext db, ICommerceVerifier verifier)
 {
     public static bool Premium(CommerceAccount? account) => account?.PremiumUntilUtc > DateTime.UtcNow;
+    public static bool CanHideActivity(CommerceAccount? account) => Premium(account) || account?.ActivityPrivacyUntilUtc > DateTime.UtcNow;
     public async Task<IDbContextTransaction> Begin(Guid user)
     {
         var transaction = await db.Database.BeginTransactionAsync();
@@ -125,7 +130,7 @@ public class CommerceService(AppDbContext db, ICommerceVerifier verifier)
     public async Task RefreshBenefitsIfSubscribed(Guid user)
     {
         var account = await db.CommerceAccounts.AsNoTracking().SingleOrDefaultAsync(a => a.UserId == user);
-        if (Premium(account)) await State(user);
+        if (CanHideActivity(account)) await State(user);
     }
 
     public async Task<CommerceState> State(Guid user, bool force = false, CancellationToken cancellation = default)
@@ -144,6 +149,7 @@ public class CommerceService(AppDbContext db, ICommerceVerifier verifier)
         if (verified != null && verified.SnapshotMs >= account.ProviderSnapshotMs)
         {
             account.PremiumUntilUtc = verified.PremiumUntil;
+            account.ActivityPrivacyUntilUtc = verified.ActivityPrivacyUntil;
             account.PremiumPeriodStartUtc = verified.PeriodStart;
             account.ProviderSnapshotMs = verified.SnapshotMs;
             account.LastVerifiedUtc = DateTime.UtcNow;
@@ -192,7 +198,8 @@ public class CommerceService(AppDbContext db, ICommerceVerifier verifier)
         Math.Max(0, account.PurchasedSuperLikes) + (Premium(account) ? account.IncludedSuperLikes : 0),
         Math.Max(0, account.PurchasedBoosts) + (Premium(account) ? account.IncludedBoosts : 0),
         account.BoostUntilUtc > DateTime.UtcNow ? account.BoostUntilUtc : null,
-        Premium(account) && account.HideActivity, Premium(account) && account.Incognito);
+        CanHideActivity(account) && account.HideActivity, Premium(account) && account.Incognito,
+        CanHideActivity(account), account.ActivityPrivacyUntilUtc);
     public static bool ConsumeSuperLike(CommerceAccount account)
     {
         RefreshAllowances(account);
