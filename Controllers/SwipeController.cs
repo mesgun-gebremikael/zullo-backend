@@ -212,6 +212,8 @@ public class SwipeController : ControllerBase
             });
         }
 
+        await using var relationTransaction = await RelationTransaction.Begin(_db, meId, dto.TargetUserId);
+
         // A direct API request must respect blocks just like the swipe feed.
         if (await _userRelationService.IsBlockedAsync(meId, dto.TargetUserId))
         {
@@ -281,12 +283,14 @@ public class SwipeController : ControllerBase
                 await _db.SaveChangesAsync();
             }
 
+            await relationTransaction.CommitAsync();
             return Ok(new LikeResponseDto
             {
                 Matched = true
             });
         }
 
+        await relationTransaction.CommitAsync();
         return Ok(new LikeResponseDto
         {
             Matched = false
@@ -304,6 +308,9 @@ public class SwipeController : ControllerBase
                 Message = "Invalid token."
             });
         }
+
+        await using var relationTransaction = await RelationTransaction.Begin(_db, meId, dto.TargetUserId);
+        if (await _userRelationService.IsBlockedAsync(meId, dto.TargetUserId)) return StatusCode(403);
 
         // Anti-spam: max 1 skip per 500 ms
         var halfSecondAgo = DateTime.UtcNow.AddMilliseconds(-500);
@@ -334,6 +341,7 @@ public class SwipeController : ControllerBase
             await _db.SaveChangesAsync();
         }
 
+        await relationTransaction.CommitAsync();
         return Ok(new SkipResponseDto
         {
             Skipped = true
