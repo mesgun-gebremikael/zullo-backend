@@ -39,7 +39,9 @@ public static class AuthenticationProtection
                 context.HttpContext.Response.Headers.RetryAfter = RetrySeconds(retry);
                 await context.HttpContext.Response.WriteAsJsonAsync(new ErrorMessageResponseDto
                 {
-                    Message = "Too many authentication attempts. Try again later."
+                    Message = context.HttpContext.Request.Path.StartsWithSegments("/me/photos")
+                        ? "Du har gjort många uppladdningsförsök. Vänta en minut och försök igen."
+                        : "Too many authentication attempts. Try again later."
                 }, cancellationToken);
             };
         });

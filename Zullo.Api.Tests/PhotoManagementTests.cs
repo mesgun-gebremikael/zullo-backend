@@ -87,6 +87,19 @@ public class PhotoManagementTests
         Assert.Equal(HttpStatusCode.TooManyRequests, (await Upload(a, Guid.NewGuid())).StatusCode); Assert.Equal(0, provider.Uploads);
     }
     [Fact]
+    public async Task UploadRateLimitIsReadableAndDoesNotBlockStatusPolling()
+    {
+        var provider = new Provider(); await using var app = await Start(provider); using var a = app.Client(app.A);
+        var id = Guid.NewGuid();
+        for (var i = 0; i < 12; i++) Assert.Equal(HttpStatusCode.OK, (await Upload(a, id)).StatusCode);
+        var limited = await Upload(a, id);
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode); Assert.NotNull(limited.Headers.RetryAfter);
+        Assert.Contains("uppladdningsförsök", (await limited.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("message").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await a.GetAsync($"/me/photos/{id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await a.GetAsync("/me/photos/availability")).StatusCode);
+        Assert.Equal(1, provider.Uploads);
+    }
+    [Fact]
     public async Task ProfileCommitAttachesImagesAndOnlySavedRemovalQueuesDeletion()
     {
         var provider = new Provider(); await using var app = await Start(provider); using var a = app.Client(app.A);
