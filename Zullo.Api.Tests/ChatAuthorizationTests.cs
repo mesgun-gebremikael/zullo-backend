@@ -246,6 +246,10 @@ public class ChatAuthorizationTests
                     services.AddScoped<LikeLimitService>();
                     services.AddHttpClient<ICommerceVerifier, RevenueCatVerifier>();
                     services.AddScoped<CommerceService>();
+                        services.AddHttpClient<IPhotoProvider, CloudinaryPhotoProvider>();
+                        services.AddScoped<PhotoLifecycle>();
+                        services.AddScoped<PhotoCleanup>();
+                        services.AddScoped<LegacyPhotoAdoption>();
                     services.AddScoped<PushNotificationService>();
                     services.AddSingleton<MessageSendLimiter>();
                     services.AddSignalR();

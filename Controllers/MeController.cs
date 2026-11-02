@@ -15,10 +15,11 @@ namespace Zullo.Api.Controllers
     public class MeController : ControllerBase
     {
         private readonly AppDbContext _db;
+        private readonly PhotoLifecycle _photos;
 
-        public MeController(AppDbContext db)
+        public MeController(AppDbContext db, PhotoLifecycle photos)
         {
-            _db = db;
+            _db = db; _photos = photos;
         }
 
         [HttpGet("account")]
@@ -106,6 +107,10 @@ namespace Zullo.Api.Controllers
                 _db.Profiles.Add(profile);
             }
 
+            if (dto.Has(nameof(dto.PhotoUrls))) {
+                var photoError = await _photos.ChangeProfile(meId, profile.PhotoUrls, dto.PhotoUrls!);
+                if (photoError != null) return BadRequest(new { code = "photo_ownership_required", message = photoError });
+            }
             // Mappar DTO till Profile så logiken ligger på ett ställe
             MapUpsertProfileDtoToProfile(dto, profile);
             if (dto.Has(nameof(dto.MatchRadiusKm))) user.MatchRadiusKm = dto.MatchRadiusKm!.Value;

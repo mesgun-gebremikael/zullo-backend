@@ -29,6 +29,7 @@ jobs:
         with:
           dotnet-version: '8.0.427'
       - run: dotnet test Zullo.Api.Tests/Zullo.Api.Tests.csproj -c Release
+      - run: dotnet build PhotoTools/PhotoTools.csproj -c Release
       - run: bash Zullo.Api.Tests/verify-chat-postgres.sh
   container:
     runs-on: ubuntu-latest

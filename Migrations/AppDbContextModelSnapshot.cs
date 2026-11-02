@@ -38,6 +38,9 @@ namespace Zullo.Api.Migrations
                     b.Property<Guid>("FormerUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("LastCleanupCheckUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<List<string>>("PhotoUrls")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -239,6 +242,98 @@ namespace Zullo.Api.Migrations
                     b.HasIndex("FromUserId", "ToUserId", "DeliverySequence");
 
                     b.ToTable("Messages");
+                });
+
+            modelBuilder.Entity("Zullo.Api.Models.OwnedPhoto", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<List<string>>("Aliases")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid?>("CleanupLease")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CleanupLeaseUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CloudName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DeleteAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("LegacyApprovalDigest")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("LegacyApprovedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextAttemptUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProviderAssetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("PublicId")
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<int>("UploadAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UploadFinishedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UploadLease")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UploadLeaseUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Url")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CloudName", "PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("State", "NextAttemptUtc");
+
+                    b.HasIndex("UserId", "CreatedAtUtc");
+
+                    b.ToTable("OwnedPhotos");
                 });
 
             modelBuilder.Entity("Zullo.Api.Models.Profile", b =>

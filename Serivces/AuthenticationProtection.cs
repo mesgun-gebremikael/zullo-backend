@@ -24,6 +24,9 @@ public static class AuthenticationProtection
                     QueueLimit = 0,
                     AutoReplenishment = true
                 }));
+            options.AddPolicy("photos", context => RateLimitPartition.GetFixedWindowLimiter(
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(context.Request.Headers.Authorization.ToString() + ":" + context.Connection.RemoteIpAddress))),
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 12, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
             options.AddPolicy("commerce", context => RateLimitPartition.GetFixedWindowLimiter(
                 Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
                     context.Request.Headers.Authorization.ToString() + ":" + context.Connection.RemoteIpAddress))),
@@ -36,7 +39,9 @@ public static class AuthenticationProtection
                 context.HttpContext.Response.Headers.RetryAfter = RetrySeconds(retry);
                 await context.HttpContext.Response.WriteAsJsonAsync(new ErrorMessageResponseDto
                 {
-                    Message = "Too many authentication attempts. Try again later."
+                    Message = context.HttpContext.Request.Path.StartsWithSegments("/me/photos")
+                        ? "Du har gjort många uppladdningsförsök. Vänta en minut och försök igen."
+                        : "Too many authentication attempts. Try again later."
                 }, cancellationToken);
             };
         });
