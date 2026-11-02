@@ -67,6 +67,8 @@ public class AccountController(AppDbContext db, IHubContext<ChatHub> hub, ILogge
         var recipients = await db.Likes.Where(l => l.FromUserId == me).Select(l => l.ToUserId).Distinct().ToListAsync();
         var peers = await db.Matches.Where(m => m.UserAId == me || m.UserBId == me)
             .Select(m => m.UserAId == me ? m.UserBId : m.UserAId).ToListAsync();
+        var draft = await db.OnboardingDrafts.SingleOrDefaultAsync(d => d.UserId == me);
+        if (draft != null) db.OnboardingDrafts.Remove(draft);
         if (profile != null) db.Profiles.Remove(profile);
         db.Messages.RemoveRange(await db.Messages.Where(m => m.FromUserId == me || m.ToUserId == me).ToListAsync());
         db.Matches.RemoveRange(await db.Matches.Where(m => m.UserAId == me || m.UserBId == me).ToListAsync());

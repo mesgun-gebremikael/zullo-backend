@@ -102,6 +102,7 @@ namespace Zullo.Api.Controllers
                 if (string.IsNullOrWhiteSpace(dto.DisplayName)) ModelState.AddModelError(nameof(dto.DisplayName), "DisplayName is required for a new profile.");
                 if (dto.Age == null) ModelState.AddModelError(nameof(dto.Age), "Age is required for a new profile.");
                 if (string.IsNullOrWhiteSpace(dto.Gender)) ModelState.AddModelError(nameof(dto.Gender), "Gender is required for a new profile.");
+                if (dto.PhotoUrls == null || dto.PhotoUrls.Count < 2) ModelState.AddModelError(nameof(dto.PhotoUrls), "Lägg till minst två bilder innan du slutför profilen.");
                 if (!ModelState.IsValid) return ValidationProblem(ModelState);
                 profile = new Profile { UserId = meId };
                 _db.Profiles.Add(profile);
@@ -115,6 +116,8 @@ namespace Zullo.Api.Controllers
             MapUpsertProfileDtoToProfile(dto, profile);
             if (dto.Has(nameof(dto.MatchRadiusKm))) user.MatchRadiusKm = dto.MatchRadiusKm!.Value;
 
+            var draft = await _db.OnboardingDrafts.SingleOrDefaultAsync(d => d.UserId == meId);
+            if (draft != null) _db.OnboardingDrafts.Remove(draft);
             await _db.SaveChangesAsync();
             await profileTransaction.CommitAsync();
 
