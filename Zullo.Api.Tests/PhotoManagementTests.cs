@@ -62,7 +62,7 @@ public class PhotoManagementTests
         Assert.Equal(HttpStatusCode.Conflict, (await Upload(a, id, changed)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await b.GetAsync($"/me/photos/{id}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await Upload(b, id)).StatusCode);
-        var stolen = await b.PostAsJsonAsync("/me/profile", new { displayName = "B", age = 25, gender = "Man", photoUrls = new[] { uploaded.Url } });
+        var stolen = await b.PostAsJsonAsync("/me/profile", new { displayName = "B", age = 25, gender = "Man", photoUrls = new[] { uploaded.Url, "https://res.cloudinary.com/test/also-not-owned.jpg" } });
         Assert.Equal(HttpStatusCode.BadRequest, stolen.StatusCode);
         await using var db = app.Db(); Assert.False(await db.Profiles.AnyAsync(p => p.UserId == app.B));
     }
@@ -108,10 +108,11 @@ public class PhotoManagementTests
             Assert.Equal(PhotoStates.Ready, (await db.OwnedPhotos.FindAsync(id))!.State);
             await Cleanup(db, provider).RunOnce(); Assert.Equal(0, provider.Deletes); // Draft not expired: edit may be cancelled.
         }
-        Assert.Equal(HttpStatusCode.OK, (await a.PostAsJsonAsync("/me/profile", new { displayName = "A", age = 25, gender = "Man", photoUrls = new[] { image!.Url } })).StatusCode);
+        var second = await (await Upload(a, Guid.NewGuid())).Content.ReadFromJsonAsync<PhotoView>();
+        Assert.Equal(HttpStatusCode.OK, (await a.PostAsJsonAsync("/me/profile", new { displayName = "A", age = 25, gender = "Man", photoUrls = new[] { image!.Url, second!.Url } })).StatusCode);
         await using (var db = app.Db()) { Assert.Equal(PhotoStates.Attached, (await db.OwnedPhotos.FindAsync(id))!.State); }
         Assert.Equal(HttpStatusCode.BadRequest, (await a.PatchAsJsonAsync("/me/profile", new { photoUrls = new[] { image!.Url, image.Url } })).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await a.PatchAsJsonAsync("/me/profile", new { photoUrls = Array.Empty<string>() })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await a.PatchAsJsonAsync("/me/profile", new { photoUrls = new[] { second!.Url } })).StatusCode);
         await using (var db = app.Db()) {
             Assert.Equal(PhotoStates.Pending, (await db.OwnedPhotos.FindAsync(id))!.State);
             await Cleanup(db, provider).RunOnce();

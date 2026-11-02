@@ -244,6 +244,29 @@ namespace Zullo.Api.Migrations
                     b.ToTable("Messages");
                 });
 
+            modelBuilder.Entity("Zullo.Api.Models.OnboardingDraft", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DataJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Step")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("OnboardingDrafts");
+                });
+
             modelBuilder.Entity("Zullo.Api.Models.OwnedPhoto", b =>
                 {
                     b.Property<Guid>("Id")
@@ -686,6 +709,15 @@ namespace Zullo.Api.Migrations
                         .WithMany()
                         .HasForeignKey("ToUserId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Zullo.Api.Models.OnboardingDraft", b =>
+                {
+                    b.HasOne("Zullo.Api.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

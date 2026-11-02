@@ -408,6 +408,25 @@ try
     Check(hiddenSummary.GetProperty("totalCount").GetInt32() == 1 && hiddenSummary.GetProperty("hiddenCount").GetInt32() == 1,
         "PostgreSQL hidden likes summary must count a regular incoming like");
     Console.WriteLine("PASS: real PostgreSQL concurrent Boost activation, credit replay and Superlike debit.");
+    var draftOwner = new User();
+    await using (var db = new AppDbContext(options)) { db.Users.Add(draftOwner); await db.SaveChangesAsync(); }
+    using var draftClient = Client(draftOwner.Id);
+    var draftBodies = new[] {
+        new { revision=0, step=2, data=new {displayName="Draft A",photoUrls=Array.Empty<string>()} },
+        new { revision=0, step=3, data=new {displayName="Draft B",photoUrls=Array.Empty<string>()} }
+    };
+    var draftRace = await Task.WhenAll(draftBodies.Select(body => draftClient.PutAsJsonAsync("/me/onboarding", body)));
+    Check(draftRace.Count(r=>r.StatusCode==HttpStatusCode.OK)==1 && draftRace.Count(r=>r.StatusCode==HttpStatusCode.Conflict)==1,
+        "Concurrent draft writes did not reject a stale device");
+    var winningDraft = Array.FindIndex(draftRace,r=>r.StatusCode==HttpStatusCode.OK);
+    var replayDraft = await draftClient.PutAsJsonAsync("/me/onboarding",draftBodies[winningDraft]);
+    Check(replayDraft.StatusCode==HttpStatusCode.OK && (await replayDraft.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("revision").GetInt64()==1,
+        "PostgreSQL JSONB normalization broke identical draft replay");
+    await using (var db=new AppDbContext(options)) {
+        Check(!await db.Profiles.AnyAsync(p=>p.UserId==draftOwner.Id),"A private onboarding draft became a public profile");
+        Check((await db.OnboardingDrafts.SingleAsync(d=>d.UserId==draftOwner.Id)).Revision==1,"Draft revision was incremented by duplicate replay");
+    }
+    Console.WriteLine("PASS: PostgreSQL private draft revision conflict, JSONB idempotent replay and no public profile.");
     // Real PostgreSQL owner locks, upload leases, unique-key conflicts and cleanup claims.
     var photoOwner = new User { PasswordHash = BCrypt.Net.BCrypt.HashPassword("photo-closure-password") };
     var secondOwner = new User();

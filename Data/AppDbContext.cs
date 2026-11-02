@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Report> Reports => Set<Report>();
     public DbSet<Block> Blocks => Set<Block>();
+    public DbSet<OnboardingDraft> OnboardingDrafts => Set<OnboardingDraft>();
     public DbSet<OwnedPhoto> OwnedPhotos => Set<OwnedPhoto>();
     public DbSet<AccountRemovalRequest> AccountRemovalRequests => Set<AccountRemovalRequest>();
     public DbSet<CommerceAccount> CommerceAccounts => Set<CommerceAccount>();
@@ -46,6 +47,9 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<OnboardingDraft>().HasKey(d => d.UserId);
+        modelBuilder.Entity<OnboardingDraft>().Property(d => d.DataJson).HasColumnType("jsonb");
+        modelBuilder.Entity<OnboardingDraft>().HasOne<User>().WithMany().HasForeignKey(d => d.UserId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<OwnedPhoto>().HasKey(p => p.Id);
         modelBuilder.Entity<OwnedPhoto>().Property(p => p.Aliases).HasColumnType("jsonb");
         modelBuilder.Entity<OwnedPhoto>().Property(p => p.State).HasMaxLength(30);

@@ -251,6 +251,8 @@ public class UpsertProfileDto : IValidatableObject
         foreach (var name in _supplied)
         {
             var value = GetType().GetProperty(name)!.GetValue(this);
+            if (value is string text && text.Contains('\0'))
+                yield return new ValidationResult("Text contains an unsupported character.", new[] { name });
             if (value == null && name != nameof(HeightCm))
                 yield return new ValidationResult("Use an empty string/list to clear this field; null is not allowed.", new[] { name });
         }
@@ -262,7 +264,7 @@ public class UpsertProfileDto : IValidatableObject
             yield return new ValidationResult("Unsupported discovery preference.", new[] { nameof(InterestedIn) });
         if (Has(nameof(Lat)) != Has(nameof(Lng)))
             yield return new ValidationResult("Lat and Lng must be supplied together.", new[] { nameof(Lat), nameof(Lng) });
-        if (Interests != null && (Interests.Count > 30 || Interests.Any(x => x == null || x.Length > 50)))
+        if (Interests != null && (Interests.Count > 30 || Interests.Any(x => x == null || x.Length > 50 || x.Contains('\0'))))
             yield return new ValidationResult("At most 30 non-null interests of 50 characters are allowed.", new[] { nameof(Interests) });
         if (PhotoUrls != null && (PhotoUrls.Count > 6 || PhotoUrls.Any(x =>
             x == null || x.Length > 2048 || !Uri.TryCreate(x.Trim(), UriKind.Absolute, out var url) || url.Scheme != Uri.UriSchemeHttps)))

@@ -41,7 +41,9 @@ public static class AuthenticationProtection
                 {
                     Message = context.HttpContext.Request.Path.StartsWithSegments("/me/photos")
                         ? "Du har gjort många uppladdningsförsök. Vänta en minut och försök igen."
-                        : "Too many authentication attempts. Try again later."
+                        : context.HttpContext.Request.Path.StartsWithSegments("/me/onboarding")
+                            ? "Du har gjort många ändringar. Vänta en minut och försök igen."
+                            : "Too many authentication attempts. Try again later."
                 }, cancellationToken);
             };
         });
