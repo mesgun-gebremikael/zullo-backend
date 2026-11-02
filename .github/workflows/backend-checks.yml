@@ -36,5 +36,14 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - run: docker build --tag zullo-staging-check:local .
+      - name: Build container without obsolete database or design-time startup errors
+        run: |
+          set -o pipefail
+          docker build --progress=plain --tag zullo-staging-check:local . 2>&1 | tee /tmp/zullo-container-build.log
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          log = Path('/tmp/zullo-container-build.log').read_text()
+          for message in ['GlobalTypeMapper', 'An error occurred while accessing the Microsoft.Extensions.Hosting services']:
+              assert message not in log, 'Container build must resolve: ' + message
+          PYTHON
       - run: python3 Zullo.Api.Tests/verify-container.py
