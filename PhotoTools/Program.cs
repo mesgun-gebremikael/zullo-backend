@@ -10,8 +10,8 @@ var connection = DatabaseConnection.Resolve(config);
 var expected = config["PhotosAdmin:ExpectedDatabase"];
 if (string.IsNullOrWhiteSpace(expected) || new NpgsqlConnectionStringBuilder(connection).Database != expected)
     throw new InvalidOperationException("Set PhotosAdmin__ExpectedDatabase to the database being reviewed.");
-NpgsqlConnection.GlobalTypeMapper.EnableDynamicJson();
-await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connection).Options);
+await using var dataSource = DatabaseConnection.CreateDataSource(config);
+await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(dataSource).Options);
 using var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(50) };
 var provider = new CloudinaryPhotoProvider(http, config);
 var lifecycle = new PhotoLifecycle(db, provider);

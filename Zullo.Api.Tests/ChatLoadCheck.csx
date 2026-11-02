@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IdentityModel.Tokens.Jwt;
@@ -29,12 +30,13 @@ using Zullo.Api.Hubs;
 using Zullo.Api.Models;
 using Zullo.Api.Services;
 
-NpgsqlConnection.GlobalTypeMapper.EnableDynamicJson();
 var adminConnection = Environment.GetEnvironmentVariable("ZULLO_CHAT_TEST_ADMIN_CONNECTION")
     ?? "Host=127.0.0.1;Port=5432;Database=zullo;Username=zullo";
 var database = "zullo_chat_" + Guid.NewGuid().ToString("N");
 var connectionString = new NpgsqlConnectionStringBuilder(adminConnection) { Database = database }.ConnectionString;
-var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options;
+await using var dataSource = DatabaseConnection.CreateDataSource(new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+    .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Default"] = connectionString }).Build());
+var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(dataSource).Options;
 var key = RandomNumberGenerator.GetBytes(32);
 var users = Enumerable.Range(0, 1003).Select(i => new User { Email = $"load-{i}@example.test" }).ToArray();
 var recipient = users[1000];
@@ -101,7 +103,7 @@ try
         .ConfigureWebHost(web => web.UseTestServer().ConfigureServices(services =>
         {
             services.AddControllers().AddApplicationPart(typeof(MessagesController).Assembly);
-            services.AddDbContext<AppDbContext>(o => o.UseNpgsql(connectionString));
+            services.AddDbContext<AppDbContext>(o => o.UseNpgsql(dataSource));
             services.AddScoped<UserRelationService>();
             services.AddScoped<PushNotificationService>();
             services.AddScoped<LikeLimitService>();

@@ -16,6 +16,8 @@ if [ "$service_port" -lt 1024 ] || [ "$service_port" -gt 65535 ]; then
 fi
 : "${ConnectionStrings__Default:?Set ConnectionStrings__Default in the server environment.}"
 : "${Jwt__Key:?Set a separate random Jwt__Key for this environment.}"
+# The base image sets HTTP_PORTS=8080. URLs is our single, validated source.
+unset ASPNETCORE_HTTP_PORTS ASPNETCORE_HTTPS_PORTS
 export ASPNETCORE_URLS="http://0.0.0.0:$service_port"
 export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Staging}"
 # Free Render services have no pre-deploy command. This is an explicit,

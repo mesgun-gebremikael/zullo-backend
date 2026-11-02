@@ -5,6 +5,13 @@ namespace Zullo.Api.Data;
 
 public static class DatabaseConnection
 {
+    public static NpgsqlDataSource CreateDataSource(IConfiguration configuration)
+    {
+        var builder = new NpgsqlDataSourceBuilder(Resolve(configuration));
+        builder.EnableDynamicJson();
+        return builder.Build();
+    }
+
     public static string Resolve(IConfiguration configuration)
     {
         var value = configuration.GetConnectionString("Default");

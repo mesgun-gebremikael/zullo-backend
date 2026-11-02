@@ -1,5 +1,6 @@
-﻿
+
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -23,6 +24,16 @@ namespace Zullo.Api
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            // EF tooling needs only the database model, never Firebase/JWT or runtime workers.
+            // The tools intercept host construction; this branch is never the serving app.
+            if (EF.IsDesignTime)
+            {
+                builder.Services.AddDbContext<AppDbContext>(options =>
+                    options.UseNpgsql(DatabaseConnection.Resolve(builder.Configuration)));
+                builder.Build().Run();
+                return;
+            }
+
             // Firebase init
             FirebaseApp.Create(new AppOptions()
             {
@@ -43,7 +54,6 @@ namespace Zullo.Api
                     });
             });
 
-            NpgsqlConnection.GlobalTypeMapper.EnableDynamicJson();
 
             // Controllers + JSON enum support
             builder.Services.AddControllers()
@@ -85,8 +95,10 @@ namespace Zullo.Api
             });
 
             // Database (PostgreSQL)
-            builder.Services.AddDbContext<AppDbContext>(options =>
-                options.UseNpgsql(DatabaseConnection.Resolve(builder.Configuration)));
+            builder.Services.AddSingleton<NpgsqlDataSource>(_ =>
+                DatabaseConnection.CreateDataSource(builder.Configuration));
+            builder.Services.AddDbContext<AppDbContext>((services, options) =>
+                options.UseNpgsql(services.GetRequiredService<NpgsqlDataSource>()));
 
             builder.Services.AddScoped<Zullo.Api.Services.LikeLimitService>();
             builder.Services.AddScoped<UserRelationService>();
@@ -130,6 +142,25 @@ namespace Zullo.Api
 
             builder.Services.AddSignalR();
             builder.Services.AddSingleton<IUserIdProvider, NameIdentifierUserIdProvider>();
+
+            // This API authenticates with independently signed JWTs, not cookies or
+            // persistent Data Protection payloads. SignalR connection tokens live only
+            // for the process lifetime. Do not write unused plaintext keys to disk.
+            // Revisit this choice before adding cookie auth or protected durable links.
+            builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
+
+            // .NET 8 also registers a hosted preloader for its persistent key ring.
+            // It is unused by the explicit ephemeral provider and otherwise writes
+            // plaintext key files anyway. Remove only that framework preloader,
+            // keeping all application workers. Container tests guard this contract.
+            foreach (var registration in builder.Services.Where(service =>
+                service.ServiceType == typeof(IHostedService) &&
+                service.ImplementationType?.FullName ==
+                    "Microsoft.AspNetCore.DataProtection.Internal.DataProtectionHostedService").ToArray())
+            {
+                builder.Services.Remove(registration);
+            }
+
 
 
             var app = builder.Build();

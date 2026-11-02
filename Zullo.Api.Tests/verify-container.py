@@ -155,11 +155,22 @@ with tempfile.TemporaryDirectory(prefix='zullo-container-') as temporary:
             assert rejected.returncode != 0 and expected_error in rejected.stderr, 'Unsafe startup migration must be refused'
         base = start_api('ZULLO_STAGING_MIGRATE_ON_START=true')
         until(lambda: request(base, '/health/ready'), 200)
-        assert request(base, '/api/auth/register', credentials)[0] == 200
+        status, body = request(base, '/api/auth/register', credentials)
+        assert status == 200
+        restart_token = json.loads(body)['token']
         command('docker', 'restart', api)
         base = 'http://' + command('docker', 'port', api, '12345/tcp').stdout.strip()
         until(lambda: request(base, '/health/ready'), 200)
         assert request(base, '/api/auth/login', credentials)[0] == 200, 'Cold restart must preserve the test account'
+        assert request(base, '/matches', token=restart_token)[0] == 200, 'Existing JWT must remain valid across restart'
+        status, negotiated = request(base, '/hubs/chat/negotiate?negotiateVersion=1', {}, restart_token)
+        assert status == 200 and json.loads(negotiated).get('connectionToken'), 'Chat must negotiate after restart'
+        captured = command('docker', 'logs', api)
+        startup_log = captured.stdout + captured.stderr
+        for warning in ['No XML encryptor configured', 'may not be persisted outside of the container', 'Overriding HTTP_PORTS']:
+            assert warning not in startup_log, 'Startup warning must be resolved: ' + warning
+        assert command('docker', 'exec', api, 'test', '!', '-d', '/home/app/.aspnet/DataProtection-Keys', check=False).returncode == 0
+
         command('docker', 'stop', '--time', '2', postgres)
         command('docker', 'restart', api)
         for _ in range(100):
