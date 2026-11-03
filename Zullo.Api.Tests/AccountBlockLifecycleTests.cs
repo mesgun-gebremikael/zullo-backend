@@ -122,6 +122,88 @@ public class AccountBlockLifecycleTests
     }
 
     [Fact]
+    public async Task BlockCardRetainsKnownIdentityWithoutExposingProfileUpdatesOrRemovedPhotos()
+    {
+        await using var app = await TestApp.Start();
+        await Profiles(app);
+        using var a = app.Client(app.A);
+        Assert.Equal(HttpStatusCode.OK, (await a.PostAsJsonAsync("/blocks", new { blockedUserId = app.B })).StatusCode);
+        var card = Assert.Single((await a.GetFromJsonAsync<List<BlockedProfileDto>>("/blocks"))!);
+        Assert.Equal("B", card.DisplayName);
+        Assert.Equal(25, card.Age);
+        Assert.Equal("https://example.test/1.jpg", card.PhotoUrl);
+        await using (var db = app.Db()) {
+            var profile = await db.Profiles.SingleAsync(p => p.UserId == app.B);
+            profile.DisplayName = "Changed privately";
+            profile.Age = 26;
+            profile.IsVisible = false;
+            profile.PhotoUrls = ["https://example.test/new.jpg"];
+            (await db.Users.SingleAsync(u => u.Id == app.B)).IsPaused = true;
+            await db.SaveChangesAsync();
+        }
+        // Retain only the identifying information already visible at block time.
+        await a.PostAsJsonAsync("/blocks", new { blockedUserId = app.B });
+        card = Assert.Single((await a.GetFromJsonAsync<List<BlockedProfileDto>>("/blocks"))!);
+        Assert.Equal("B", card.DisplayName);
+        Assert.Equal(25, card.Age);
+        Assert.Empty(card.PhotoUrl);
+        Assert.Equal(HttpStatusCode.NotFound, (await a.GetAsync($"/profiles/{app.B}")).StatusCode);
+    }
+
+    [Theory]
+    [InlineData("hidden")]
+    [InlineData("paused")]
+    [InlineData("incognito")]
+    [InlineData("reverse")]
+    public async Task BlockingAnInaccessiblePersonDoesNotRevealTheirIdentity(string privacy)
+    {
+        await using var app = await TestApp.Start();
+        await Profiles(app);
+        await using (var db = app.Db()) {
+            if (privacy == "hidden") (await db.Profiles.SingleAsync(p => p.UserId == app.B)).IsVisible = false;
+            if (privacy == "paused") (await db.Users.SingleAsync(u => u.Id == app.B)).IsPaused = true;
+            if (privacy == "incognito") db.CommerceAccounts.Add(new CommerceAccount { UserId = app.B, Incognito = true, PremiumUntilUtc = DateTime.UtcNow.AddDays(1) });
+            if (privacy == "reverse") db.Blocks.Add(new Block { FromUserId = app.B, BlockedUserId = app.A });
+            await db.SaveChangesAsync();
+        }
+        using var a = app.Client(app.A);
+        Assert.Equal(HttpStatusCode.OK, (await a.PostAsJsonAsync("/blocks", new { blockedUserId = app.B })).StatusCode);
+        var card = Assert.Single((await a.GetFromJsonAsync<List<BlockedProfileDto>>("/blocks"))!);
+        Assert.Equal("Profil", card.DisplayName);
+        Assert.Null(card.Age);
+        Assert.Empty(card.PhotoUrl);
+        await using var check = app.Db();
+        var saved = await check.Blocks.SingleAsync(b => b.FromUserId == app.A);
+        Assert.Empty(saved.SnapshotDisplayName);
+        Assert.Null(saved.SnapshotAge);
+        Assert.Empty(saved.SnapshotPhotoUrl);
+    }
+
+    [Fact]
+    public async Task AReverseBlockRedactsAnExistingCardAndClosedAccountsAreNotExposed()
+    {
+        await using var app = await TestApp.Start();
+        await Profiles(app);
+        using var a = app.Client(app.A);
+        using var b = app.Client(app.B);
+        await a.PostAsJsonAsync("/blocks", new { blockedUserId = app.B });
+        await b.PostAsJsonAsync("/blocks", new { blockedUserId = app.A });
+        var card = Assert.Single((await a.GetFromJsonAsync<List<BlockedProfileDto>>("/blocks"))!);
+        Assert.Equal("Profil", card.DisplayName);
+        Assert.Null(card.Age);
+        Assert.Empty(card.PhotoUrl);
+        await b.DeleteAsync($"/blocks/{app.A}");
+        await using (var db = app.Db()) {
+            (await db.Users.SingleAsync(u => u.Id == app.B)).IsClosed = true;
+            await db.SaveChangesAsync();
+        }
+        card = Assert.Single((await a.GetFromJsonAsync<List<BlockedProfileDto>>("/blocks"))!);
+        Assert.Equal("Profil", card.DisplayName);
+        Assert.Null(card.Age);
+        Assert.Empty(card.PhotoUrl);
+    }
+
+    [Fact]
     public async Task BlocksRequireAuthenticationAndValidTarget()
     {
         await using var app = await TestApp.Start();

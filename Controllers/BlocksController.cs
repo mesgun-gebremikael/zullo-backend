@@ -10,7 +10,7 @@ using Zullo.Api.Hubs;
 
 namespace Zullo.Api.Controllers;
 
-public record BlockedProfileDto(Guid UserId, string DisplayName);
+public record BlockedProfileDto(Guid UserId, string DisplayName, int? Age = null, string PhotoUrl = "");
 
 [ApiController, Route("blocks"), Authorize]
 public class BlocksController : ControllerBase
@@ -25,13 +25,26 @@ public class BlocksController : ControllerBase
     {
         if (!CurrentUserService.TryGetUserId(User, out var me)) return Unauthorized();
         // Only outgoing blocks: never disclose who blocked the caller.
-        var rows = await (from block in _db.Blocks.AsNoTracking()
-                          where block.FromUserId == me
-                          join profile in _db.Profiles on block.BlockedUserId equals profile.UserId into profiles
-                          from profile in profiles.DefaultIfEmpty()
-                          orderby block.CreatedAtUtc descending
-                          select new BlockedProfileDto(block.BlockedUserId,
-                              profile == null ? "Profil" : profile.DisplayName)).ToListAsync();
+        var blocks = await _db.Blocks.AsNoTracking().Where(b => b.FromUserId == me).OrderByDescending(b => b.CreatedAtUtc).ToListAsync();
+        var ids = blocks.Select(b => b.BlockedUserId).ToList();
+        var profiles = await _db.Profiles.AsNoTracking().Include(p => p.User).Where(p => ids.Contains(p.UserId)).ToListAsync();
+        var reverse = await _db.Blocks.AsNoTracking().Where(b => b.BlockedUserId == me && ids.Contains(b.FromUserId)).Select(b => b.FromUserId).ToListAsync();
+        var hidden = await _db.CommerceAccounts.AsNoTracking().Where(a => ids.Contains(a.UserId) && a.Incognito && a.PremiumUntilUtc > DateTime.UtcNow).Select(a => a.UserId).ToListAsync();
+        var profilesById = profiles.ToDictionary(p => p.UserId);
+        var reverseIds = reverse.ToHashSet();
+        var hiddenIds = hidden.ToHashSet();
+        var rows = blocks.Select(block => {
+            profilesById.TryGetValue(block.BlockedUserId, out var profile);
+            if (profile?.User == null || profile.User.IsClosed || reverseIds.Contains(block.BlockedUserId)) return new BlockedProfileDto(block.BlockedUserId, "Profil");
+            // A snapshot identifies an outgoing block; it never grants full-profile access.
+            var publicFallback = profile.IsVisible && !profile.User!.IsPaused && !hiddenIds.Contains(profile.UserId);
+            var name = block.SnapshotDisplayName.Length > 0 ? block.SnapshotDisplayName : publicFallback ? profile.DisplayName : "Profil";
+            var photo = block.SnapshotPhotoUrl;
+            if (photo.Length == 0 && publicFallback) photo = profile.PhotoUrls.FirstOrDefault() ?? "";
+            if (!profile.PhotoUrls.Contains(photo)) photo = ""; // Never re-expose a removed photo.
+            return new BlockedProfileDto(block.BlockedUserId, name,
+                block.SnapshotAge ?? (publicFallback ? profile.Age : null), photo);
+        }).ToList();
         return Ok(rows);
     }
 
@@ -44,8 +57,17 @@ public class BlocksController : ControllerBase
         if (!await _db.Users.AnyAsync(u => u.Id == other)) return NotFound();
         await using var transaction = await RelationTransaction.Begin(_db, me, other);
         if (!await _db.Users.AnyAsync(u => u.Id == other && !u.IsClosed)) return NotFound();
-        if (!await _db.Blocks.AnyAsync(b => b.FromUserId == me && b.BlockedUserId == other))
-            _db.Blocks.Add(new Block { Id = Guid.NewGuid(), FromUserId = me, BlockedUserId = other });
+        if (!await _db.Blocks.AnyAsync(b => b.FromUserId == me && b.BlockedUserId == other)) {
+            var profile = await _db.Profiles.AsNoTracking().Include(p => p.User).SingleOrDefaultAsync(p => p.UserId == other);
+            var reverse = await _db.Blocks.AnyAsync(b => b.FromUserId == other && b.BlockedUserId == me);
+            var matched = await _db.Matches.AnyAsync(m => (m.UserAId == me && m.UserBId == other) || (m.UserAId == other && m.UserBId == me));
+            var hidden = await _db.CommerceAccounts.AnyAsync(a => a.UserId == other && a.Incognito && a.PremiumUntilUtc > DateTime.UtcNow) &&
+                !await _db.Likes.AnyAsync(l => l.FromUserId == other && l.ToUserId == me);
+            var allowed = profile != null && !reverse && (matched || (profile.IsVisible && !profile.User!.IsPaused && !hidden));
+            _db.Blocks.Add(new Block { Id = Guid.NewGuid(), FromUserId = me, BlockedUserId = other,
+                SnapshotDisplayName = allowed ? profile!.DisplayName : "", SnapshotAge = allowed ? profile!.Age : null,
+                SnapshotPhotoUrl = allowed ? profile!.PhotoUrls.FirstOrDefault() ?? "" : "" });
+        }
         await ResetSwipes(me, other);
         await _db.SaveChangesAsync();
         await transaction.CommitAsync();

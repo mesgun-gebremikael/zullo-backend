@@ -1,4 +1,4 @@
-﻿namespace Zullo.Api.Models;
+namespace Zullo.Api.Models;
 
 public class Block
 {
@@ -10,6 +10,9 @@ public class Block
     // vem blir blockerad
     public Guid BlockedUserId { get; set; }
 
+    public string SnapshotDisplayName { get; set; } = "";
+    public int? SnapshotAge { get; set; }
+    public string SnapshotPhotoUrl { get; set; } = "";
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     

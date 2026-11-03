@@ -47,6 +47,8 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<Block>().Property(b => b.SnapshotDisplayName).HasMaxLength(100);
+        modelBuilder.Entity<Block>().Property(b => b.SnapshotPhotoUrl).HasMaxLength(2048);
         modelBuilder.Entity<Profile>().HasIndex(p => new { p.IsVisible, p.Lat });
         modelBuilder.Entity<Profile>().Property(p => p.PromptKey).HasMaxLength(60);
         modelBuilder.Entity<Profile>().Property(p => p.PromptAnswer).HasMaxLength(250);

@@ -68,6 +68,19 @@ namespace Zullo.Api.Migrations
                     b.Property<Guid>("FromUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("SnapshotAge")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SnapshotDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("SnapshotPhotoUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BlockedUserId");

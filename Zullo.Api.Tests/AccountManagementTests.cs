@@ -48,6 +48,9 @@ public class AccountManagementTests
         using var a = app.Client(app.A); using var b = app.Client(app.B);
         await using (var db = app.Db()) {
             db.Messages.Add(new Message { FromUserId = app.A, ToUserId = app.B, Text = "private conversation" });
+            db.Blocks.AddRange(
+                new Block { FromUserId = app.A, BlockedUserId = app.B, SnapshotDisplayName = "B", SnapshotAge = 25, SnapshotPhotoUrl = "https://example.test/b" },
+                new Block { FromUserId = app.C, BlockedUserId = app.A, SnapshotDisplayName = "A", SnapshotAge = 25, SnapshotPhotoUrl = "https://example.test/a" });
             db.PurchaseGrants.Add(new PurchaseGrant { TransactionKey = "app_store:retained-order", UserId = app.A, ProductId = "zullo_boost_1", Boosts = 1 });
             await db.SaveChangesAsync();
         }
@@ -67,6 +70,7 @@ public class AccountManagementTests
         var closed = await check.Users.SingleAsync(u => u.Id == app.A);
         Assert.True(closed.IsClosed); Assert.Null(closed.Email); Assert.Null(closed.DeviceToken); Assert.Empty(closed.PasswordHash);
         Assert.False(await check.Profiles.AnyAsync(p => p.UserId == app.A));
+        Assert.False(await check.Blocks.AnyAsync(b => b.FromUserId == app.A || b.BlockedUserId == app.A));
         Assert.False(await check.Messages.AnyAsync(m => m.FromUserId == app.A || m.ToUserId == app.A));
         Assert.True(await check.PurchaseGrants.AnyAsync(g => g.TransactionKey == "app_store:retained-order"));
         var task = await check.AccountRemovalRequests.SingleAsync(r => r.FormerUserId == app.A);
