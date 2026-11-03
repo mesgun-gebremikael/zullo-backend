@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
@@ -35,8 +35,8 @@ public class SwipeController : ControllerBase
     // GET /swipe/feed
     [HttpGet("feed")]
     public async Task<IActionResult> GetFeed(
-        [FromQuery] int minAge = 18,
-        [FromQuery] int maxAge = 99,
+        [FromQuery] int? minAge = null,
+        [FromQuery] int? maxAge = null,
         [FromQuery] int take = 10)
     {
         take = Math.Clamp(take, 1, 50);
@@ -62,6 +62,7 @@ public class SwipeController : ControllerBase
         var myRadiusKm = me.MatchRadiusKm;
         if (me.IsPaused || me.IsClosed) return Ok(new SwipeFeedResponseDto { RadiusKm = myRadiusKm, Profiles = new(), IsPaused = me.IsPaused });
 
+        minAge ??= me.DiscoveryMinAge; maxAge ??= me.DiscoveryMaxAge;
         if (minAge < 18) minAge = 18;
         if (maxAge > 100) maxAge = 100;
 
@@ -117,6 +118,11 @@ public class SwipeController : ControllerBase
             _ => null // Existing profiles keep their previous unfiltered behavior.
         };
 
+        var candidateMinAge = me.ExpandAge ? Math.Max(18, minAge.Value - 5) : minAge.Value;
+        var candidateMaxAge = me.ExpandAge ? Math.Min(100, maxAge.Value + 5) : maxAge.Value;
+        var candidateRadius = me.ExpandDistance ? Math.Min(450, Math.Max(myRadiusKm + 25, myRadiusKm * 1.5)) : myRadiusKm;
+        var latSpan = candidateRadius / 110.0;
+        var lngSpan = Math.Min(180, candidateRadius / (110.0 * Math.Max(.000001, Math.Cos(myLat * Math.PI / 180))));
         var now = DateTime.UtcNow;
         var superLikedMe = await _db.Likes.AsNoTracking().Where(l => l.ToUserId == meId && l.IsSuperLike).Select(l => l.FromUserId).ToListAsync();
         var boosted = await _db.CommerceAccounts.AsNoTracking().Where(a => a.BoostUntilUtc > now).Select(a => a.UserId).ToListAsync();
@@ -133,65 +139,19 @@ public class SwipeController : ControllerBase
             // Den här kraschar PostgreSQL (jsonb + cardinality)
 
             .Where(p => !excluded.Contains(p.UserId))
-            .Where(p => p.Age >= minAge && p.Age <= maxAge)
-            .OrderByDescending(p => superLikedMe.Contains(p.UserId))
-            .ThenByDescending(p => boosted.Contains(p.UserId))
-            .Take(200)
+            .Where(p => p.Age >= candidateMinAge && p.Age <= candidateMaxAge)
+            .Where(p => p.Lat >= myLat - latSpan && p.Lat <= myLat + latSpan &&
+                (Math.Abs(p.Lng - myLng) <= lngSpan || Math.Abs(p.Lng - myLng) >= 360 - lngSpan))
+            .OrderBy(p => p.Age >= minAge && p.Age <= maxAge ? 0 : 1)
+            .ThenBy(p => (p.Lat - myLat) * (p.Lat - myLat) +
+                Math.Pow(Math.Min(Math.Abs(p.Lng - myLng), 360 - Math.Abs(p.Lng - myLng)) * Math.Cos(myLat * Math.PI / 180), 2))
+            .Take(1000)
             .ToListAsync();
 
 
         // Räkna avstånd och filtrera inom radien (C#)
-        var result = candidates
-            .Select(p => new SwipeProfileDto
-            {
-                UserId = p.UserId,
-                SuperLikedYou = superLikedMe.Contains(p.UserId),
-
-                // skyddar mot null och konstiga värden
-                DisplayName = (p.DisplayName ?? "").Trim(),
-                Age = p.Age,
-                Bio = (p.Bio ?? "").Trim(),
-
-                Intention = (p.Intention ?? "").Trim(),
-                Religion = (p.Religion ?? "").Trim(),
-                Workout = (p.Workout ?? "").Trim(),
-                Smoking = (p.Smoking ?? "").Trim(),
-                Pets = (p.Pets ?? "").Trim(),
-
-                HeightCm = p.HeightCm,
-
-                RelationshipHistory = (p.RelationshipHistory ?? "").Trim(),
-                ZodiacSign = (p.ZodiacSign ?? "").Trim(),
-
-                Alcohol = (p.Alcohol ?? "").Trim(),
-                Cannabis = (p.Cannabis ?? "").Trim(),
-
-                ChildrenCount = (p.ChildrenCount ?? "").Trim(),
-                WantChildren = (p.WantChildren ?? "").Trim(),
-
-                WorkStatus = (p.WorkStatus ?? "").Trim(),
-                StudyPlace = (p.StudyPlace ?? "").Trim(),
-                StudySubject = (p.StudySubject ?? "").Trim(),
-                WorkPlace = (p.WorkPlace ?? "").Trim(),
-                JobTitle = (p.JobTitle ?? "").Trim(),
-
-                LivePlace = (p.LivePlace ?? "").Trim(),
-                OriginPlace = (p.OriginPlace ?? "").Trim(),
-
-                // säkerställ att listor aldrig är null
-                Interests = p.Interests ?? new List<string>(),
-                PhotoUrls = p.PhotoUrls ?? new List<string>(),
-
-                // första bild om den finns
-                PhotoUrl = p.PhotoUrls?.FirstOrDefault() ?? "",
-
-                CountryCode = (p.CountryCode ?? "").Trim(),
-
-                DistanceKm = Math.Round(
-                    GeoService.DistanceKm(myLat, myLng, p.Lat, p.Lng),
-                    1
-                )
-            })
+        var eligible = candidates
+            .Select(p => ProfilePresentation.ToDto(p, myProfile, superLikedMe.Contains(p.UserId)))
 
             // ✅ FIX (flyttad hit istället för SQL):
             // visa bara profiler som har minst 2 bilder
@@ -200,12 +160,15 @@ public class SwipeController : ControllerBase
             // ❌ gammal kommentar:
             // .Where(x => x.PhotoUrls.Count > 0)
 
-            .Where(x => x.DistanceKm <= myRadiusKm)
+            .Where(x => x.DistanceKm <= candidateRadius)
             .OrderByDescending(x => x.SuperLikedYou)
             .ThenByDescending(x => boosted.Contains(x.UserId))
             .ThenBy(x => x.DistanceKm)
-            .Take(take)
             .ToList();
+
+        var strict = eligible.Where(p => p.DistanceKm <= myRadiusKm && p.Age >= minAge && p.Age <= maxAge).ToList();
+        var result = (strict.Count > 0 ? strict : eligible).Take(take).ToList();
+        foreach (var p in result) { p.OutsideDistance = p.DistanceKm > myRadiusKm; p.OutsideAge = p.Age < minAge || p.Age > maxAge; }
 
         return Ok(new SwipeFeedResponseDto
         {

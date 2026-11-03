@@ -40,6 +40,13 @@ public class UpsertProfileDto : IValidatableObject
         set { _Bio = value; _supplied.Add(nameof(Bio)); }
     }
 
+    private string? _PromptKey;
+    [MaxLength(60)]
+    public string? PromptKey { get => _PromptKey; set { _PromptKey = value; _supplied.Add(nameof(PromptKey)); } }
+    private string? _PromptAnswer;
+    [MaxLength(250)]
+    public string? PromptAnswer { get => _PromptAnswer; set { _PromptAnswer = value; _supplied.Add(nameof(PromptAnswer)); } }
+
     private string? _Intention;
     [MaxLength(50)]
     public string? Intention
@@ -262,6 +269,10 @@ public class UpsertProfileDto : IValidatableObject
             yield return new ValidationResult("Gender cannot be blank.", new[] { nameof(Gender) });
         if (InterestedIn != null && !new[] { "", "Alla", "Män", "Kvinnor" }.Contains(InterestedIn.Trim()))
             yield return new ValidationResult("Unsupported discovery preference.", new[] { nameof(InterestedIn) });
+        if (Has(nameof(PromptKey)) != Has(nameof(PromptAnswer)))
+            yield return new ValidationResult("Supply the question and answer together.");
+        if (PromptKey != null && !Zullo.Api.Services.ConversationPrompts.IsValid(PromptKey.Trim(), PromptAnswer?.Trim() ?? ""))
+            yield return new ValidationResult("Choose a supported question and provide its answer, or clear both.");
         if (Has(nameof(Lat)) != Has(nameof(Lng)))
             yield return new ValidationResult("Lat and Lng must be supplied together.", new[] { nameof(Lat), nameof(Lng) });
         if (Interests != null && (Interests.Count > 30 || Interests.Any(x => x == null || x.Length > 50 || x.Contains('\0'))))

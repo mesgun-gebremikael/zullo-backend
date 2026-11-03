@@ -1,4 +1,4 @@
-﻿using Zullo.Api.Models;
+using Zullo.Api.Models;
 
 namespace Zullo.Api.Dtos;
 
@@ -6,11 +6,15 @@ public class SwipeProfileDto
 {
     // Andra användarens id
     public Guid UserId { get; set; }
+    public bool OutsideDistance { get; set; }
+    public bool OutsideAge { get; set; }
     public bool SuperLikedYou { get; set; }
 
     public string DisplayName { get; set; } = "";
     public int Age { get; set; }
     public string Bio { get; set; } = "";
+    public string PromptKey { get; set; } = "";
+    public string PromptAnswer { get; set; } = "";
 
     public string Intention { get; set; } = "";
     public string Religion { get; set; } = "";

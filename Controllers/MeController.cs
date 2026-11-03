@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -36,6 +36,8 @@ namespace Zullo.Api.Controllers
             if (dto.Has(nameof(dto.DisplayName))) profile.DisplayName = dto.DisplayName!.Trim();
             if (dto.Has(nameof(dto.Age))) profile.Age = dto.Age!.Value;
             if (dto.Has(nameof(dto.Gender))) profile.Gender = dto.Gender!.Trim();
+            if (dto.Has(nameof(dto.PromptKey))) profile.PromptKey = dto.PromptKey!.Trim();
+            if (dto.Has(nameof(dto.PromptAnswer))) profile.PromptAnswer = dto.PromptAnswer!.Trim();
             if (dto.Has(nameof(dto.Bio))) profile.Bio = dto.Bio!.Trim();
             if (dto.Has(nameof(dto.Intention))) profile.Intention = dto.Intention!.Trim();
             if (dto.Has(nameof(dto.Religion))) profile.Religion = dto.Religion!.Trim();
@@ -158,7 +160,11 @@ namespace Zullo.Api.Controllers
         Gender = p.Gender,
         InterestedIn = p.InterestedIn,
         MatchRadiusKm = p.User!.MatchRadiusKm,
+        DiscoveryAgeConfigured = p.User.DiscoveryAgeConfigured,
+        DiscoveryMinAge = p.User.DiscoveryMinAge, DiscoveryMaxAge = p.User.DiscoveryMaxAge,
         Bio = p.Bio,
+        PromptKey = p.PromptKey,
+        PromptAnswer = p.PromptAnswer,
         Intention = p.Intention,
         Religion = p.Religion,
         Workout = p.Workout,

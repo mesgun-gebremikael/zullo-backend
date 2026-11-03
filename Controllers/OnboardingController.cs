@@ -19,14 +19,14 @@ public class OnboardingController(AppDbContext db) : ControllerBase
 {
     private static readonly HashSet<string> TextFields = new(StringComparer.Ordinal) {
         "displayName", "gender", "interestedIn", "workStatus", "studyPlace", "studySubject", "workPlace", "jobTitle", "livePlace", "originPlace",
-        "intention", "workout", "pets", "smoking", "relationshipHistory", "zodiacSign", "religion", "childrenCount", "wantChildren", "bio"
+        "intention", "workout", "pets", "smoking", "relationshipHistory", "zodiacSign", "religion", "childrenCount", "wantChildren", "bio", "promptKey", "promptAnswer"
     };
     private static readonly Dictionary<string,int> Limits = typeof(UpsertProfileDto).GetProperties()
         .Where(p => p.GetCustomAttribute<MaxLengthAttribute>() != null)
         .ToDictionary(p => JsonNamingPolicy.CamelCase.ConvertName(p.Name), p => p.GetCustomAttribute<MaxLengthAttribute>()!.Length, StringComparer.Ordinal);
     private static string? Validate(Dictionary<string, JsonElement>? data)
     {
-        if (data == null || data.Count > 24) return "Utkastet kunde inte sparas.";
+        if (data == null || data.Count > 26) return "Utkastet kunde inte sparas.";
         foreach (var (key, value) in data) {
             if (TextFields.Contains(key)) {
                 var max = Limits.GetValueOrDefault(key, 120);

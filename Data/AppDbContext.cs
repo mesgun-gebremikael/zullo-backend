@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Zullo.Api.Models;
 
 namespace Zullo.Api.Data;
@@ -47,6 +47,12 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<Profile>().HasIndex(p => new { p.IsVisible, p.Lat });
+        modelBuilder.Entity<Profile>().Property(p => p.PromptKey).HasMaxLength(60);
+        modelBuilder.Entity<Profile>().Property(p => p.PromptAnswer).HasMaxLength(250);
+        modelBuilder.Entity<Profile>().Property(p => p.DiscoveryLocationName).HasMaxLength(150);
+        modelBuilder.Entity<User>().Property(u => u.DiscoveryMinAge).HasDefaultValue(18);
+        modelBuilder.Entity<User>().Property(u => u.DiscoveryMaxAge).HasDefaultValue(99);
         modelBuilder.Entity<OnboardingDraft>().HasKey(d => d.UserId);
         modelBuilder.Entity<OnboardingDraft>().Property(d => d.DataJson).HasColumnType("jsonb");
         modelBuilder.Entity<OnboardingDraft>().HasOne<User>().WithMany().HasForeignKey(d => d.UserId).OnDelete(DeleteBehavior.Cascade);
