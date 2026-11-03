@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace Zullo.Api.Models;
 
@@ -19,6 +19,11 @@ public class Profile
     public string InterestedIn { get; set; } = "";
 
     public string Bio { get; set; } = "";
+    public string PromptKey { get; set; } = "";
+    public string PromptAnswer { get; set; } = "";
+    public bool AutomaticLocation { get; set; }
+    public string DiscoveryLocationName { get; set; } = "";
+    public DateTime? LocationUpdatedAtUtc { get; set; }
 
     public string Intention { get; set; } = "";
     public string Religion { get; set; } = "";

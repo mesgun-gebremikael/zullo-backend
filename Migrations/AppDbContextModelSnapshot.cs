@@ -372,6 +372,9 @@ namespace Zullo.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("AutomaticLocation")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Bio")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -389,6 +392,11 @@ namespace Zullo.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
+
+                    b.Property<string>("DiscoveryLocationName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
@@ -433,6 +441,9 @@ namespace Zullo.Api.Migrations
                     b.Property<double>("Lng")
                         .HasColumnType("double precision");
 
+                    b.Property<DateTime?>("LocationUpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("OriginPlace")
                         .IsRequired()
                         .HasColumnType("text");
@@ -444,6 +455,16 @@ namespace Zullo.Api.Migrations
                     b.Property<List<string>>("PhotoUrls")
                         .IsRequired()
                         .HasColumnType("jsonb");
+
+                    b.Property<string>("PromptAnswer")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)");
+
+                    b.Property<string>("PromptKey")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
 
                     b.Property<string>("RelationshipHistory")
                         .IsRequired()
@@ -492,6 +513,8 @@ namespace Zullo.Api.Migrations
 
                     b.HasIndex("UserId")
                         .IsUnique();
+
+                    b.HasIndex("IsVisible", "Lat");
 
                     b.ToTable("Profiles");
                 });
@@ -595,9 +618,28 @@ namespace Zullo.Api.Migrations
                     b.Property<string>("DeviceToken")
                         .HasColumnType("text");
 
+                    b.Property<bool>("DiscoveryAgeConfigured")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("DiscoveryMaxAge")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(99);
+
+                    b.Property<int>("DiscoveryMinAge")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(18);
+
                     b.Property<string>("Email")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("ExpandAge")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ExpandDistance")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("GoogleSubject")
                         .HasMaxLength(255)

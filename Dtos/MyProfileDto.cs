@@ -1,4 +1,4 @@
-﻿using Zullo.Api.Models;
+using Zullo.Api.Models;
 
 namespace Zullo.Api.Dtos;
 
@@ -12,8 +12,13 @@ public class MyProfileDto
     public int Age { get; set; }
     public string Gender { get; set; } = "";
     public string InterestedIn { get; set; } = "";
+    public bool DiscoveryAgeConfigured { get; set; }
+    public int DiscoveryMinAge { get; set; }
+    public int DiscoveryMaxAge { get; set; }
     public int MatchRadiusKm { get; set; }
     public string Bio { get; set; } = "";
+    public string PromptKey { get; set; } = "";
+    public string PromptAnswer { get; set; } = "";
 
     public string Intention { get; set; } = "";
     public string Religion { get; set; } = "";

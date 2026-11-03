@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Zullo.Api.Models
@@ -24,6 +24,11 @@ namespace Zullo.Api.Models
         // Tinder-like free likes
         public int LikesRemaining { get; set; } = 50;
 
+        public bool DiscoveryAgeConfigured { get; set; }
+        public bool ExpandDistance { get; set; }
+        public bool ExpandAge { get; set; }
+        public int DiscoveryMinAge { get; set; } = 18;
+        public int DiscoveryMaxAge { get; set; } = 99;
         public int MatchRadiusKm { get; set; } = 50;
 
         public DateTime LikesResetAtUtc { get; set; } = DateTime.UnixEpoch;

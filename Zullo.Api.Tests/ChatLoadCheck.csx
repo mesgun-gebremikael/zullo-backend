@@ -58,9 +58,13 @@ try
         {
             // Seed the old schema using only columns that existed before this upgrade.
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO \"User\" (\"Id\",\"Email\",\"PasswordHash\",\"IsVerified\",\"CreatedAtUtc\",\"LikesRemaining\",\"MatchRadiusKm\",\"LikesResetAtUtc\") VALUES ({user.Id},{user.Email},{user.PasswordHash},{user.IsVerified},{user.CreatedAtUtc},{user.LikesRemaining},{user.MatchRadiusKm},{user.LikesResetAtUtc})");
-            db.Profiles.Add(new Profile { UserId = user.Id, DisplayName = "Synthetic test user", Age = 25,
+            var oldProfile = new Profile { UserId = user.Id, DisplayName = "Synthetic test user", Age = 25,
                 Gender = "Man", IsVisible = true,
-                PhotoUrls = new() { "https://images.example/1", "https://images.example/2" } });
+                PhotoUrls = new() { "https://images.example/1", "https://images.example/2" } };
+            // Populate the old table's composite type: new model fields are ignored,
+            // so this seed stays valid before their migration has been applied.
+            var profileJson = JsonSerializer.Serialize(oldProfile);
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO \"Profiles\" SELECT (jsonb_populate_record(NULL::\"Profiles\", {profileJson}::jsonb)).*");
             if (user.Id != recipient.Id)
                 db.Matches.Add(new Match
                 {
@@ -160,6 +164,37 @@ try
             };
         }).Build();
     }
+    // Real PostgreSQL exercise of location persistence, fallback SQL and matched gallery access.
+    var locationOwner = Guid.NewGuid(); var locationPeer = Guid.NewGuid();
+    await using (var db = new AppDbContext(options)) {
+        db.Users.AddRange(new User { Id = locationOwner, MatchRadiusKm = 5 }, new User { Id = locationPeer });
+        db.Profiles.AddRange(new Profile { UserId = locationOwner, Lat = 59.3, Lng = 18, Age = 28, Gender = "Man" },
+            new Profile { UserId = locationPeer, Lat = 59.3, Lng = 18.1, Age = 28, Gender = "Kvinna", IsVisible = true,
+                PromptKey = "weekend", PromptAnswer = "Havet", PhotoUrls = ["https://images.example/location1", "https://images.example/location2"] });
+        db.Matches.Add(new Match { UserAId = locationOwner.CompareTo(locationPeer) < 0 ? locationOwner : locationPeer,
+            UserBId = locationOwner.CompareTo(locationPeer) < 0 ? locationPeer : locationOwner });
+        await db.SaveChangesAsync();
+    }
+    using (var locationClient = Client(locationOwner)) {
+        var strictFeed = await locationClient.GetFromJsonAsync<JsonElement>("/swipe/feed");
+        Check(strictFeed.GetProperty("profiles").GetArrayLength() == 0, "Strict radius unexpectedly expanded");
+        Check((await locationClient.PatchAsJsonAsync("/me/discovery-settings", new { expandDistance = true })).IsSuccessStatusCode, "Could not save expansion preference");
+        var expandedFeed = await locationClient.GetFromJsonAsync<JsonElement>("/swipe/feed");
+        Check(expandedFeed.GetProperty("profiles").GetArrayLength() == 1 && expandedFeed.GetProperty("profiles")[0].GetProperty("outsideDistance").GetBoolean(), "PostgreSQL fallback query did not return the nearby profile");
+        var gallery = await locationClient.GetFromJsonAsync<JsonElement>($"/profiles/{locationPeer}");
+        Check(gallery.GetProperty("photoUrls").GetArrayLength() == 2 && !gallery.TryGetProperty("lat", out _), "Gallery exposed private GPS data or lost photos");
+        Check((await locationClient.PatchAsJsonAsync("/me/discovery-settings", new { automaticLocation = true, lat = 40.4, lng = -3.7, locationName = "Madrid" })).IsSuccessStatusCode, "Location update failed");
+        var travelledFeed = await locationClient.GetFromJsonAsync<JsonElement>("/swipe/feed");
+        Check(travelledFeed.GetProperty("profiles").GetArrayLength() == 0, "Travel did not move discovery centre");
+    }
+    await using (var db = new AppDbContext(options)) {
+        db.Matches.RemoveRange(db.Matches.Where(m => m.UserAId == locationOwner || m.UserBId == locationOwner));
+        db.Profiles.RemoveRange(db.Profiles.Where(p => p.UserId == locationOwner || p.UserId == locationPeer));
+        db.Users.RemoveRange(db.Users.Where(u => u.Id == locationOwner || u.Id == locationPeer));
+        await db.SaveChangesAsync();
+    }
+    Console.WriteLine("PASS: PostgreSQL foreground location, expanded-radius query and private matched gallery.");
+
     using var a = Client(concurrentSender.Id);
     using var b = Client(recipient.Id);
     var liveMessages = new ConcurrentDictionary<Guid, byte>();
