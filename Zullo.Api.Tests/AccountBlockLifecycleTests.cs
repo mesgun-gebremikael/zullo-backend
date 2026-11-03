@@ -150,6 +150,86 @@ public class AccountBlockLifecycleTests
         Assert.Equal(HttpStatusCode.NotFound, (await a.GetAsync($"/profiles/{app.B}")).StatusCode);
     }
 
+    [Fact]
+    public async Task ARecordedEmptyPhotoNeverPicksUpAPhotoAddedAfterTheBlock()
+    {
+        await using var app = await TestApp.Start();
+        await Profiles(app);
+        await app.Match();
+        await using (var db = app.Db()) {
+            var profile = await db.Profiles.SingleAsync(p => p.UserId == app.B);
+            profile.PhotoUrls = [];
+            profile.IsVisible = false;
+            await db.SaveChangesAsync();
+        }
+        using var a = app.Client(app.A);
+        Assert.Equal(HttpStatusCode.OK, (await a.PostAsJsonAsync("/blocks", new { blockedUserId = app.B })).StatusCode);
+        var card = Assert.Single((await a.GetFromJsonAsync<List<BlockedProfileDto>>("/blocks"))!);
+        Assert.Equal("B", card.DisplayName);
+        Assert.Empty(card.PhotoUrl);
+        await using (var db = app.Db()) {
+            var profile = await db.Profiles.SingleAsync(p => p.UserId == app.B);
+            profile.DisplayName = "Later public name";
+            profile.Age = 26;
+            profile.PhotoUrls = ["https://example.test/later.jpg", "https://example.test/another.jpg"];
+            profile.IsVisible = true;
+            await db.SaveChangesAsync();
+        }
+        card = Assert.Single((await a.GetFromJsonAsync<List<BlockedProfileDto>>("/blocks"))!);
+        Assert.Equal("B", card.DisplayName);
+        Assert.Equal(25, card.Age);
+        Assert.Empty(card.PhotoUrl);
+    }
+
+    [Theory]
+    [InlineData("hidden")]
+    [InlineData("incognito")]
+    public async Task AnExistingMatchAllowsAnIdentificationSnapshotForAPrivateProfile(string privacy)
+    {
+        await using var app = await TestApp.Start();
+        await Profiles(app);
+        await app.Match();
+        await using (var db = app.Db()) {
+            if (privacy == "hidden") (await db.Profiles.SingleAsync(p => p.UserId == app.B)).IsVisible = false;
+            if (privacy == "incognito") db.CommerceAccounts.Add(new CommerceAccount { UserId = app.B, Incognito = true, PremiumUntilUtc = DateTime.UtcNow.AddDays(1) });
+            await db.SaveChangesAsync();
+        }
+        using var a = app.Client(app.A);
+        Assert.Equal(HttpStatusCode.OK, (await a.PostAsJsonAsync("/blocks", new { blockedUserId = app.B })).StatusCode);
+        var card = Assert.Single((await a.GetFromJsonAsync<List<BlockedProfileDto>>("/blocks"))!);
+        Assert.Equal("B", card.DisplayName);
+        Assert.Equal(25, card.Age);
+        Assert.Equal("https://example.test/1.jpg", card.PhotoUrl);
+        Assert.Equal(HttpStatusCode.NotFound, (await a.GetAsync($"/profiles/{app.B}")).StatusCode);
+        await using var check = app.Db();
+        Assert.Equal("B", (await check.Blocks.SingleAsync(b => b.FromUserId == app.A)).SnapshotDisplayName);
+        Assert.False(await check.Matches.AnyAsync(m => (m.UserAId == app.A && m.UserBId == app.B) || (m.UserAId == app.B && m.UserBId == app.A)));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LegacyBlockIdentificationFallsBackOnlyToAPublicProfile(bool visible)
+    {
+        await using var app = await TestApp.Start();
+        await Profiles(app);
+        await using (var db = app.Db()) {
+            (await db.Profiles.SingleAsync(p => p.UserId == app.B)).IsVisible = visible;
+            db.Blocks.Add(new Block { FromUserId = app.A, BlockedUserId = app.B });
+            await db.SaveChangesAsync();
+        }
+        using var a = app.Client(app.A);
+        var card = Assert.Single((await a.GetFromJsonAsync<List<BlockedProfileDto>>("/blocks"))!);
+        Assert.Equal(visible ? "B" : "Profil", card.DisplayName);
+        Assert.Equal(visible ? (int?)25 : null, card.Age);
+        Assert.Equal(visible ? "https://example.test/1.jpg" : "", card.PhotoUrl);
+        await using var check = app.Db();
+        var legacy = await check.Blocks.SingleAsync(b => b.FromUserId == app.A);
+        Assert.Empty(legacy.SnapshotDisplayName);
+        Assert.Null(legacy.SnapshotAge);
+        Assert.Empty(legacy.SnapshotPhotoUrl);
+    }
+
     [Theory]
     [InlineData("hidden")]
     [InlineData("paused")]

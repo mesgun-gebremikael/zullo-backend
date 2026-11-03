@@ -37,8 +37,11 @@ public class BlocksController : ControllerBase
             profilesById.TryGetValue(block.BlockedUserId, out var profile);
             if (profile?.User == null || profile.User.IsClosed || reverseIds.Contains(block.BlockedUserId)) return new BlockedProfileDto(block.BlockedUserId, "Profil");
             // A snapshot identifies an outgoing block; it never grants full-profile access.
-            var publicFallback = profile.IsVisible && !profile.User!.IsPaused && !hiddenIds.Contains(profile.UserId);
-            var name = block.SnapshotDisplayName.Length > 0 ? block.SnapshotDisplayName : publicFallback ? profile.DisplayName : "Profil";
+            // Captured names are required for new snapshots. An empty captured
+            // photo is meaningful: never replace it with a photo added later.
+            var hasSnapshot = block.SnapshotDisplayName.Length > 0;
+            var publicFallback = !hasSnapshot && profile.IsVisible && !profile.User!.IsPaused && !hiddenIds.Contains(profile.UserId);
+            var name = hasSnapshot ? block.SnapshotDisplayName : publicFallback ? profile.DisplayName : "Profil";
             var photo = block.SnapshotPhotoUrl;
             if (photo.Length == 0 && publicFallback) photo = profile.PhotoUrls.FirstOrDefault() ?? "";
             if (!profile.PhotoUrls.Contains(photo)) photo = ""; // Never re-expose a removed photo.
