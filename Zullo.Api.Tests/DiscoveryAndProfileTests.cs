@@ -109,6 +109,25 @@ public class DiscoveryAndProfileTests
         Assert.Equal(HttpStatusCode.OK, (await a.PatchAsJsonAsync("/me/profile", new { promptKey = "", promptAnswer = "" })).StatusCode);
     }
     [Theory]
+    [InlineData("perfect_evening")]
+    [InlineData("travel_story")]
+    [InlineData("food_opinion")]
+    [InlineData("teach_me")]
+    [InlineData("simple_plan")]
+    [InlineData("surprise")]
+    [InlineData("talk_all_night")]
+    public async Task ExpandedPromptsAndFriendshipPersistWithoutTranslatingUserAnswers(string key)
+    {
+        await using var app = await TestApp.Start(); await Seed(app); using var a = app.Client(app.A);
+        const string answer = "قهوة مع أصدقاء — fika med vänner";
+        Assert.Equal(HttpStatusCode.OK, (await a.PatchAsJsonAsync("/me/profile", new { promptKey = key, promptAnswer = answer, intention = "Friendship", religion = "" })).StatusCode);
+        var profile = (await a.GetFromJsonAsync<JsonObject>("/me/profile"))!;
+        Assert.Equal(key, profile["promptKey"]!.GetValue<string>());
+        Assert.Equal(answer, profile["promptAnswer"]!.GetValue<string>());
+        Assert.Equal("Friendship", profile["intention"]!.GetValue<string>());
+        Assert.Equal("", profile["religion"]!.GetValue<string>());
+    }
+    [Theory]
     [InlineData(0, 179.99, -179.99)]
     [InlineData(89.99, 0, 179)]
     public async Task NearbyProfilesAcrossDateLineOrNearPoleAreNotLost(double latitude, double ownerLongitude, double peerLongitude)
