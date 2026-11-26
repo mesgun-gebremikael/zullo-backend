@@ -107,19 +107,27 @@ with tempfile.TemporaryDirectory(prefix='zullo-container-') as temporary:
             command('docker', 'run', '--rm', '--network', network, '--env-file', str(env), image, migration_command)
         until(lambda: request(base, '/health/ready'), 200)
         credentials = {'email': 'synthetic@example.test', 'password': 'Test-only-long-password-123!'}
-        status, body = request(base, '/api/auth/register', credentials)
-        assert status == 200, 'Real container registration failed'
-        # Real PostgreSQL race: one account and no leaked token/server error for losers.
-        race_credentials = {'email': 'parallel@example.test', 'password': 'Test-only-long-password-123!'}
+        # SMTP is intentionally absent. New signup must fail closed and never create an account/JWT.
         with ThreadPoolExecutor(max_workers=4) as pool:
-            results = list(pool.map(lambda _: request(base, '/api/auth/register', race_credentials), range(4)))
-        assert sorted(status for status, _ in results) == [200, 400, 400, 400], 'Parallel registration must not return 500'
-        for status, body in results:
-            if status == 400:
-                assert 'token' not in json.loads(body), 'Rejected duplicate must never receive existing account credentials'
+            results = list(pool.map(lambda _: request(base, '/api/auth/register', credentials), range(4)))
+        assert all(status == 503 for status, _ in results), 'Unconfigured verification delivery must refuse signup'
+        assert all('token' not in json.loads(body) for _, body in results), 'Unverified signup must never issue a JWT'
         rows = command('docker', 'exec', postgres, 'psql', '-U', 'zullo', '-d', 'zullo_staging',
-                       '-tAc', "SELECT count(*) FROM \"User\" WHERE \"Email\" = 'parallel@example.test'").stdout.strip()
-        assert rows == '1', 'The email uniqueness constraint must remain enabled'
+                       '-tAc', 'SELECT count(*) FROM "User"').stdout.strip()
+        assert rows == '0', 'Unverified signup must not create an account'
+
+        def seed_owned_verified_fixture():
+            # Synthetic test-only identity in this disposable DB; production has no bypass endpoint.
+            # BCrypt hash corresponds to credentials["password"], never a real account credential.
+            password_hash = '$2b$12$osNn35Ir8zRj9nNo2hO5.ehvyXupqHEgLeD7hhXvDbn2CQ7u3IjrC'
+            sql = f"""INSERT INTO "User" ("Id", "Email", "PasswordHash", "IsPaused", "IsClosed", "IsVerified",
+                "EmailVerifiedAtUtc", "CreatedAtUtc", "LikesRemaining", "LikesResetAtUtc", "DiscoveryAgeConfigured",
+                "ExpandDistance", "ExpandAge", "DiscoveryMinAge", "DiscoveryMaxAge", "MatchRadiusKm")
+                VALUES ('{uuid.uuid4()}', 'synthetic@example.test', '{password_hash}', false, false, true,
+                now(), now(), 50, '1970-01-01 UTC', false, false, false, 18, 99, 50)"""
+            command('docker', 'exec', postgres, 'psql', '-v', 'ON_ERROR_STOP=1', '-U', 'zullo', '-d', 'zullo_staging', '-c', sql)
+
+        seed_owned_verified_fixture()
         status, body = request(base, '/api/auth/login', credentials)
         assert status == 200, 'Real container login failed'
         token = json.loads(body)['token']
@@ -155,8 +163,9 @@ with tempfile.TemporaryDirectory(prefix='zullo-container-') as temporary:
             assert rejected.returncode != 0 and expected_error in rejected.stderr, 'Unsafe startup migration must be refused'
         base = start_api('ZULLO_STAGING_MIGRATE_ON_START=true')
         until(lambda: request(base, '/health/ready'), 200)
-        status, body = request(base, '/api/auth/register', credentials)
-        assert status == 200
+        seed_owned_verified_fixture()
+        status, body = request(base, '/api/auth/login', credentials)
+        assert status == 200, 'Verified fixture must log in after startup migration'
         restart_token = json.loads(body)['token']
         command('docker', 'restart', api)
         base = 'http://' + command('docker', 'port', api, '12345/tcp').stdout.strip()

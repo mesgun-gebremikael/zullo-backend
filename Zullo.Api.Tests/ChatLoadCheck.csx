@@ -426,8 +426,13 @@ try
     Check(superAttempts.Count(r => r.StatusCode == HttpStatusCode.OK) == 1, "Concurrent Superlikes overspent a single credit");
     Check(!(await likesInvalidation.Task.WaitAsync(TimeSpan.FromSeconds(5))).EnumerateObject().Any(),
         "Likes invalidation must not reveal sender identity to a free recipient");
-    Check((await superLikeDelivery.Task.WaitAsync(TimeSpan.FromSeconds(5))).GetProperty("senderUserId").GetGuid() == concurrentSender.Id,
-        "Superlike did not reach its authenticated recipient");
+    Check(!(await superLikeDelivery.Task.WaitAsync(TimeSpan.FromSeconds(5))).EnumerateObject().Any(),
+        "Superlike invalidation must not expose sender identity in its payload");
+    var successfulTarget = superAttempts[0].StatusCode == HttpStatusCode.OK ? users[998] : users[999];
+    using var superRecipient = Client(successfulTarget.Id);
+    var receivedSuperLikes = await superRecipient.GetFromJsonAsync<JsonElement>("/likes/received");
+    Check(receivedSuperLikes.EnumerateArray().Any(item => item.GetProperty("userId").GetGuid() == concurrentSender.Id
+        && item.GetProperty("isSuperLike").GetBoolean()), "Authenticated recipient could not resolve its Superlike sender");
     await using (var db = new AppDbContext(options))
         Check((await db.CommerceAccounts.SingleAsync(w => w.UserId == concurrentSender.Id)).PurchasedSuperLikes == 0, "Superlike debit was not persisted");
     var regularLikeInvalidation = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
