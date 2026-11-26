@@ -39,7 +39,8 @@ public class SwipeController : ControllerBase
     public async Task<IActionResult> GetFeed(
         [FromQuery] int? minAge = null,
         [FromQuery] int? maxAge = null,
-        [FromQuery] int take = 10)
+        [FromQuery] int take = 10,
+        CancellationToken cancellationToken = default)
     {
         take = Math.Clamp(take, 1, 50);
 
@@ -52,7 +53,7 @@ public class SwipeController : ControllerBase
         }
 
         // Hämta min user (för radie)
-        var me = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == meId);
+        var me = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == meId, cancellationToken);
         if (me == null)
         {
             return Unauthorized(new ErrorMessageResponseDto
@@ -82,7 +83,7 @@ public class SwipeController : ControllerBase
 
         // Hämta min profil (för lat/lng)
         var myProfile = await _db.Profiles.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.UserId == meId);
+            .FirstOrDefaultAsync(p => p.UserId == meId, cancellationToken);
 
         if (myProfile == null)
         {
@@ -101,24 +102,6 @@ public class SwipeController : ControllerBase
         var myLat = myProfile.Lat;
         var myLng = myProfile.Lng;
 
-        // Exkludera redan swipade
-        var likedIds = await _db.Likes.AsNoTracking()
-            .Where(l => l.FromUserId == meId)
-            .Select(l => l.ToUserId)
-            .ToListAsync();
-
-        var skippedIds = await _db.Skips.AsNoTracking()
-            .Where(s => s.FromUserId == meId)
-            .Select(s => s.ToUserId)
-            .ToListAsync();
-
-        var blockedIds = await _userRelationService.GetBlockedUserIdsAsync(meId);
-        var excluded = likedIds
-          .Concat(skippedIds)
-           .Concat(blockedIds)
-          .ToHashSet();
-        excluded.Add(meId);
-
         var preferredGender = myProfile.InterestedIn switch
         {
             "Män" => "Man",
@@ -132,8 +115,6 @@ public class SwipeController : ControllerBase
         var latSpan = candidateRadius / 110.0;
         var lngSpan = Math.Min(180, candidateRadius / (110.0 * Math.Max(.000001, Math.Cos(myLat * Math.PI / 180))));
         var now = DateTime.UtcNow;
-        var superLikedMe = await _db.Likes.AsNoTracking().Where(l => l.ToUserId == meId && l.IsSuperLike).Select(l => l.FromUserId).ToListAsync();
-        var boosted = await _db.CommerceAccounts.AsNoTracking().Where(a => a.BoostUntilUtc > now).Select(a => a.UserId).ToListAsync();
         // Hämta kandidater (SQL slutar här)
         var candidates = await _db.Profiles.AsNoTracking()
             // Endast profiler som är markerade synliga
@@ -147,7 +128,14 @@ public class SwipeController : ControllerBase
             // .Where(p => p.PhotoUrls != null && p.PhotoUrls.Count >= 2)
             // Den här kraschar PostgreSQL (jsonb + cardinality)
 
-            .Where(p => !excluded.Contains(p.UserId))
+            // Keep lifetime swipe/block histories in the database: transferring them
+            // on every mobile feed refresh grows without bound as an account ages.
+            .Where(p => p.UserId != meId)
+            .Where(p => !_db.Likes.Any(l => l.FromUserId == meId && l.ToUserId == p.UserId))
+            .Where(p => !_db.Skips.Any(s => s.FromUserId == meId && s.ToUserId == p.UserId))
+            .Where(p => !_db.Blocks.Any(b =>
+                (b.FromUserId == meId && b.BlockedUserId == p.UserId) ||
+                (b.FromUserId == p.UserId && b.BlockedUserId == meId)))
             .Where(p => p.Age >= candidateMinAge && p.Age <= candidateMaxAge)
             .Where(p => p.Lat >= myLat - latSpan && p.Lat <= myLat + latSpan &&
                 (Math.Abs(p.Lng - myLng) <= lngSpan || Math.Abs(p.Lng - myLng) >= 360 - lngSpan))
@@ -155,24 +143,31 @@ public class SwipeController : ControllerBase
             .ThenBy(p => (p.Lat - myLat) * (p.Lat - myLat) +
                 Math.Pow(Math.Min(Math.Abs(p.Lng - myLng), 360 - Math.Abs(p.Lng - myLng)) * Math.Cos(myLat * Math.PI / 180), 2))
             .Take(1000)
-            .ToListAsync();
+            .Select(p => new
+            {
+                Profile = p,
+                SuperLikedYou = _db.Likes.Any(l => l.FromUserId == p.UserId && l.ToUserId == meId && l.IsSuperLike),
+                Boosted = _db.CommerceAccounts.Any(a => a.UserId == p.UserId && a.BoostUntilUtc > now)
+            })
+            .ToListAsync(cancellationToken);
 
 
         // Räkna avstånd och filtrera inom radien (C#)
         var eligible = candidates
-            .Select(p => ProfilePresentation.ToDto(p, myProfile, superLikedMe.Contains(p.UserId)))
+            .Select(p => new { Profile = ProfilePresentation.ToDto(p.Profile, myProfile, p.SuperLikedYou), p.Boosted })
 
             // ✅ FIX (flyttad hit istället för SQL):
             // visa bara profiler som har minst 2 bilder
-            .Where(x => x.PhotoUrls != null && x.PhotoUrls.Count >= 2)
+            .Where(x => x.Profile.PhotoUrls != null && x.Profile.PhotoUrls.Count >= 2)
 
             // ❌ gammal kommentar:
             // .Where(x => x.PhotoUrls.Count > 0)
 
-            .Where(x => x.DistanceKm <= candidateRadius)
-            .OrderByDescending(x => x.SuperLikedYou)
-            .ThenByDescending(x => boosted.Contains(x.UserId))
-            .ThenBy(x => x.DistanceKm)
+            .Where(x => x.Profile.DistanceKm <= candidateRadius)
+            .OrderByDescending(x => x.Profile.SuperLikedYou)
+            .ThenByDescending(x => x.Boosted)
+            .ThenBy(x => x.Profile.DistanceKm)
+            .Select(x => x.Profile)
             .ToList();
 
         var strict = eligible.Where(p => p.DistanceKm <= myRadiusKm && p.Age >= minAge && p.Age <= maxAge).ToList();

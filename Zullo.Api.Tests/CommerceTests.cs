@@ -96,6 +96,43 @@ public class CommerceTests
     }
 
     [Fact]
+    public async Task MixedReceiptHistoryPreservesOwnersSpentBalancesAndSingleRefunds()
+    {
+        var store = new VerifiedStore { Credits = new()
+        {
+            new("app_store:spent", "zullo_superlikes_5", 5, 0, "rc-spent"),
+            new("app_store:foreign", "zullo_boost_1", 0, 1),
+            new("app_store:refund", "zullo_superlikes_5", 5, 0, Refunded: true),
+            new("app_store:new", "zullo_superlikes_5", 5, 0),
+            new("app_store:new", "zullo_superlikes_5", 5, 0)
+        } };
+        await using var app = await App(store);
+        await using (var db = app.Db())
+        {
+            db.CommerceAccounts.Add(new CommerceAccount { UserId = app.A, PurchasedSuperLikes = 5 });
+            db.PurchaseGrants.AddRange(
+                new PurchaseGrant { UserId = app.A, TransactionKey = "app_store:spent", ProductId = "zullo_superlikes_5", SuperLikes = 5 },
+                new PurchaseGrant { UserId = app.B, TransactionKey = "app_store:foreign", ProductId = "zullo_boost_1", Boosts = 1 },
+                new PurchaseGrant { UserId = app.A, TransactionKey = "app_store:refund", ProductId = "zullo_superlikes_5", SuperLikes = 5 });
+            await db.SaveChangesAsync();
+        }
+        using var client = app.Client(app.A);
+        for (var i = 0; i < 2; i++)
+        {
+            var response = await client.PostAsync("/commerce/sync", null);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var state = await response.Content.ReadFromJsonAsync<CommerceState>();
+            Assert.Equal(5, state!.SuperLikes);
+            Assert.Equal(0, state.Boosts);
+        }
+        await using var check = app.Db();
+        Assert.Equal(4, await check.PurchaseGrants.CountAsync());
+        Assert.Equal(app.B, (await check.PurchaseGrants.FindAsync("app_store:foreign"))!.UserId);
+        Assert.Equal("rc-spent", (await check.PurchaseGrants.FindAsync("app_store:spent"))!.ProviderTransactionId);
+        Assert.True((await check.PurchaseGrants.FindAsync("app_store:refund"))!.Refunded);
+    }
+
+    [Fact]
     public async Task SignedProviderRefundRemovesCreditsOnceAndReplayDoesNotRestoreThem()
     {
         var store = new VerifiedStore { Credits = new() { new("app_store:refund", "zullo_superlikes_5", 5, 0) } };

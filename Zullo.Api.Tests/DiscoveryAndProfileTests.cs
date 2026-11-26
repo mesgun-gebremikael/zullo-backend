@@ -19,6 +19,52 @@ public class DiscoveryAndProfileTests
         await db.SaveChangesAsync();
     }
     [Fact]
+    public async Task FeedKeepsHistoryPrivacyAndCandidateScopedPriorityWithoutPublicBoostFlags()
+    {
+        await using var app = await TestApp.Start();
+        await Seed(app, lng: 18.01);
+        var normal = Guid.NewGuid();
+        var boosted = Guid.NewGuid();
+        var liked = Guid.NewGuid();
+        var skipped = Guid.NewGuid();
+        var blocked = Guid.NewGuid();
+        var reverseBlocked = Guid.NewGuid();
+        var incognito = Guid.NewGuid();
+        var farBoost = Guid.NewGuid();
+        await using (var db = app.Db())
+        {
+            foreach (var id in new[] { normal, boosted, liked, skipped, blocked, reverseBlocked, incognito, farBoost })
+            {
+                db.Users.Add(new User { Id = id });
+                db.Profiles.Add(new Profile
+                {
+                    UserId = id, DisplayName = "Candidate", Age = 28, Gender = "Kvinna", IsVisible = true,
+                    Lat = 59.3, Lng = id == farBoost ? 40 : id == boosted ? 18.03 : 18.005,
+                    PhotoUrls = ["https://a.test/1", "https://a.test/2"]
+                });
+            }
+            db.Likes.AddRange(new Like { FromUserId = app.A, ToUserId = liked },
+                new Like { FromUserId = app.B, ToUserId = app.A, IsSuperLike = true });
+            db.Skips.Add(new Skip { FromUserId = app.A, ToUserId = skipped });
+            db.Blocks.AddRange(new Block { FromUserId = app.A, BlockedUserId = blocked },
+                new Block { FromUserId = reverseBlocked, BlockedUserId = app.A });
+            db.CommerceAccounts.AddRange(new CommerceAccount { UserId = boosted, BoostUntilUtc = DateTime.UtcNow.AddMinutes(20) },
+                new CommerceAccount { UserId = farBoost, BoostUntilUtc = DateTime.UtcNow.AddMinutes(20) },
+                new CommerceAccount { UserId = incognito, Incognito = true, PremiumUntilUtc = DateTime.UtcNow.AddDays(1) });
+            await db.SaveChangesAsync();
+        }
+        using var client = app.Client(app.A);
+        var feed = (await client.GetFromJsonAsync<JsonObject>("/swipe/feed"))!["profiles"]!.AsArray();
+        Assert.Equal(new[] { app.B, boosted, normal }, feed.Select(p => Guid.Parse(p!["userId"]!.GetValue<string>())));
+        Assert.True(feed[0]!["superLikedYou"]!.GetValue<bool>());
+        foreach (var profile in feed)
+        {
+            Assert.Null(profile!["boosted"]);
+            Assert.Null(profile["boostUntilUtc"]);
+        }
+    }
+
+    [Fact]
     public async Task MatchedProfileRequiresMatchAndDoesNotExposeCoordinates()
     {
         await using var app = await TestApp.Start(); await Seed(app);

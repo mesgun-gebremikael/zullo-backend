@@ -168,10 +168,17 @@ public class CommerceService(AppDbContext db, ICommerceVerifier verifier)
             account.PremiumPeriodStartUtc = verified.PeriodStart;
             account.ProviderSnapshotMs = verified.SnapshotMs;
             account.LastVerifiedUtc = DateTime.UtcNow;
-            foreach (var credit in verified.Credits.DistinctBy(c => c.Key))
+            var credits = verified.Credits.DistinctBy(c => c.Key).ToList();
+            var receiptKeys = credits.Select(c => c.Key).ToArray();
+            // Store histories grow over time. Resolve existing receipts together,
+            // avoiding a database roundtrip per old purchase under the account lock.
+            // Include other owners: a globally claimed receipt must never be regranted.
+            var grants = receiptKeys.Length == 0 ? new Dictionary<string, PurchaseGrant>() :
+                await db.PurchaseGrants.Where(g => receiptKeys.Contains(g.TransactionKey))
+                    .ToDictionaryAsync(g => g.TransactionKey, cancellation);
+            foreach (var credit in credits)
             {
-                var existingGrant = await db.PurchaseGrants.SingleOrDefaultAsync(g => g.TransactionKey == credit.Key, cancellation);
-                if (existingGrant != null)
+                if (grants.TryGetValue(credit.Key, out var existingGrant))
                 {
                     // Backfill an authenticated alias without granting again, reviving a
                     // refund or moving a transaction between accounts/products.
