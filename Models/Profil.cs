@@ -19,6 +19,7 @@ public class Profile
     public string InterestedIn { get; set; } = "";
 
     public string Bio { get; set; } = "";
+    public List<ProfilePrompt> ConversationPrompts { get; set; } = new();
     public string PromptKey { get; set; } = "";
     public string PromptAnswer { get; set; } = "";
     public bool AutomaticLocation { get; set; }

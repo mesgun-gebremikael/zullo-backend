@@ -11,10 +11,53 @@ using Zullo.Api.Services;
 namespace Zullo.Api.Controllers;
 
 public record PrivacyUpdate(bool HideActivity, bool Incognito);
+public record PurchaseStatusRequest(string Store, string TransactionId, string ProductId, string IdentifierKind = "store");
 
 [ApiController, Authorize, Route("commerce"), EnableRateLimiting("commerce")]
 public class CommerceController(AppDbContext db, CommerceService commerce, IConfiguration configuration, IHostEnvironment environment, Microsoft.AspNetCore.SignalR.IHubContext<Zullo.Api.Hubs.ChatHub> hub, ILogger<CommerceController> logger) : ControllerBase
 {
+    [HttpGet("catalog")]
+    public IActionResult Catalog() => Ok(new
+    {
+        premiumPlans = CommerceProducts.NewSubscriptionPlans,
+        includedSuperLikesPerWeek = 3,
+        includedBoostsPerMonth = 1,
+        boostDurationMinutes = 30,
+        consumables = new[] { "zullo_superlikes_5", "zullo_boost_1", "zullo_boosts_5" },
+        legacyActivityProduct = CommerceProducts.LegacyActivityMonthly
+    });
+
+    // An SDK result identifies what to check; only the verified server ledger
+    // confirms a consumable. A caller cannot inspect another account's receipt.
+    [HttpPost("purchase-status")]
+    public async Task<IActionResult> PurchaseStatus(PurchaseStatusRequest request, CancellationToken cancellation)
+    {
+        if (!CurrentUserService.TryGetUserId(User, out var user)) return Unauthorized();
+        if (request.Store is not ("app_store" or "play_store") || string.IsNullOrWhiteSpace(request.TransactionId) ||
+            request.TransactionId.Length > 180 || RevenueCatVerifier.ProductAmounts(request.ProductId) == (0, 0))
+            return BadRequest();
+        if (request.IdentifierKind is not ("store" or "revenuecat")) return BadRequest();
+        var transactionKey = request.Store + ":" + request.TransactionId;
+        async Task<List<Zullo.Api.Models.PurchaseGrant>> Find() => await db.PurchaseGrants.AsNoTracking()
+            .Where(g => g.UserId == user && g.ProductId == request.ProductId &&
+                (request.IdentifierKind == "store" ? g.TransactionKey == transactionKey :
+                    g.ProviderTransactionId == request.TransactionId && g.TransactionKey.StartsWith(request.Store + ":")))
+            .Take(2).ToListAsync(cancellation);
+        var grants = await Find();
+        if (request.IdentifierKind == "revenuecat" && grants.Count == 0)
+        {
+            // SDK history exposes RevenueCat IDs, not store receipt IDs. Learn
+            // their association only from the authenticated provider response.
+            try { await commerce.State(user, force: true, cancellation); }
+            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException or JsonException or FormatException or KeyNotFoundException)
+            { return StatusCode(503, new { message = "Köpet kunde inte verifieras ännu. Försök igen senare." }); }
+            grants = await Find();
+        }
+        var grant = grants.Count == 1 ? grants[0] : null;
+        // Ambiguous provider identities are never proof of a specific receipt.
+        return Ok(new { verified = grant != null && !grant.Refunded, refunded = grant?.Refunded == true });
+    }
+
     [HttpGet("state")]
     public async Task<IActionResult> State(CancellationToken cancellation) =>
         CurrentUserService.TryGetUserId(User, out var user) ? Ok(await commerce.State(user, cancellation: cancellation)) : Unauthorized();
@@ -24,7 +67,7 @@ public class CommerceController(AppDbContext db, CommerceService commerce, IConf
     {
         if (!CurrentUserService.TryGetUserId(User, out var user)) return Unauthorized();
         try { return Ok(await commerce.State(user, force: true, cancellation)); }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException or JsonException or FormatException or KeyNotFoundException)
         { return StatusCode(503, new { message = "Köpet kunde inte verifieras ännu. Ditt saldo ändras först efter verifiering. Försök igen." }); }
     }
 

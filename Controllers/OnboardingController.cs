@@ -26,11 +26,15 @@ public class OnboardingController(AppDbContext db) : ControllerBase
         .ToDictionary(p => JsonNamingPolicy.CamelCase.ConvertName(p.Name), p => p.GetCustomAttribute<MaxLengthAttribute>()!.Length, StringComparer.Ordinal);
     private static string? Validate(Dictionary<string, JsonElement>? data)
     {
-        if (data == null || data.Count > 26) return "Utkastet kunde inte sparas.";
+        if (data == null || data.Count > 27) return "Utkastet kunde inte sparas.";
         foreach (var (key, value) in data) {
             if (TextFields.Contains(key)) {
                 var max = Limits.GetValueOrDefault(key, 120);
                 if (value.ValueKind != JsonValueKind.String || (value.GetString()!.Length > max || value.GetString()!.Contains('\0'))) return "Ett svar är för långt eller ogiltigt.";
+            } else if (key == "conversationPrompts") {
+                if (value.ValueKind != JsonValueKind.Array) return "Välj högst tre samtalsfrågor.";
+                var prompts = JsonSerializer.Deserialize<List<ProfilePrompt>>(value.GetRawText(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                if (prompts == null || !ConversationPrompts.IsValidCollection(prompts, allowUnanswered: true)) return "Välj högst tre olika samtalsfrågor med giltiga svar.";
             } else if (key == "birthDate") {
                 if (value.ValueKind != JsonValueKind.Null && (value.ValueKind != JsonValueKind.String || !DateOnly.TryParseExact(value.GetString(), "yyyy-MM-dd", out var date) || date > DateOnly.FromDateTime(DateTime.UtcNow) || date.Year < DateTime.UtcNow.Year - 100)) return "Kontrollera födelsedatumet.";
             } else if (key is "heightCm" or "distanceKm") {
@@ -47,7 +51,23 @@ public class OnboardingController(AppDbContext db) : ControllerBase
     private static string Canonical(Dictionary<string, JsonElement> data) => JsonSerializer.Serialize(data.OrderBy(p => p.Key, StringComparer.Ordinal).ToDictionary(p => p.Key, p => p.Value));
     private static List<string> Photos(Dictionary<string, JsonElement> data) => data.TryGetValue("photoUrls", out var photos)
         ? photos.EnumerateArray().Select(p => p.GetString()!).ToList() : new();
-    private static Dictionary<string, JsonElement> Read(OnboardingDraft draft) => JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(draft.DataJson)!;
+    private static List<ProfilePrompt> DraftPrompts(Dictionary<string, JsonElement> data) {
+        if (data.TryGetValue("conversationPrompts", out var value))
+            return JsonSerializer.Deserialize<List<ProfilePrompt>>(value.GetRawText(), new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? [];
+        var key = data.TryGetValue("promptKey", out var k) ? k.GetString() ?? "" : "";
+        var answer = data.TryGetValue("promptAnswer", out var a) ? a.GetString() ?? "" : "";
+        return ConversationPrompts.Keys.Contains(key) ? [new ProfilePrompt(key, answer)] : [];
+    }
+    private static void AssignPrompts(Dictionary<string, JsonElement> data, List<ProfilePrompt> prompts) {
+        data["conversationPrompts"] = JsonSerializer.SerializeToElement(prompts, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        data["promptKey"] = JsonSerializer.SerializeToElement(prompts.FirstOrDefault()?.Key ?? "");
+        data["promptAnswer"] = JsonSerializer.SerializeToElement(prompts.FirstOrDefault()?.Answer ?? "");
+    }
+    private static Dictionary<string, JsonElement> Read(OnboardingDraft draft) {
+        var data = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(draft.DataJson)!;
+        if (data.ContainsKey("conversationPrompts") || data.ContainsKey("promptKey")) AssignPrompts(data, DraftPrompts(data));
+        return data;
+    }
     private static object View(OnboardingDraft draft, Dictionary<string, JsonElement> data, bool photosExpired = false) => new { draft.Revision, draft.Step, data, photosExpired };
 
     [HttpGet]
@@ -78,8 +98,17 @@ public class OnboardingController(AppDbContext db) : ControllerBase
         if (!await db.Users.AnyAsync(u => u.Id == me && !u.IsClosed)) return Unauthorized();
         if (await db.Profiles.AnyAsync(p => p.UserId == me)) return Conflict(new { code = "profile_exists", message = "Profilen finns redan. Öppna appen igen." });
         input.Data.TryAdd("photoUrls", JsonSerializer.SerializeToElement(Array.Empty<string>()));
-        var json = Canonical(input.Data);
         var draft = await db.OnboardingDrafts.SingleOrDefaultAsync(d => d.UserId == me);
+        if (input.Data.ContainsKey("conversationPrompts")) AssignPrompts(input.Data, DraftPrompts(input.Data));
+        else if (draft != null && Read(draft).ContainsKey("conversationPrompts")) {
+            var prompts = DraftPrompts(Read(draft));
+            if (input.Data.TryGetValue("promptKey", out var key) && input.Data.TryGetValue("promptAnswer", out var answer)) {
+                try { prompts = ConversationPrompts.MergeLegacy(new Profile { ConversationPrompts = prompts }, key.GetString()!.Trim(), answer.GetString()!.Trim()); }
+                catch (ArgumentException) { return BadRequest(new { message = "Samma samtalsfråga får inte väljas flera gånger." }); }
+            }
+            AssignPrompts(input.Data, prompts);
+        }
+        var json = Canonical(input.Data);
         if ((draft?.Revision ?? 0) != input.Revision) {
             if (draft != null && Canonical(Read(draft)) == json && draft.Step == input.Step) return Ok(View(draft, Read(draft)));
             return Conflict(new { code = "draft_conflict", message = "Profilutkastet har ändrats på en annan enhet. Öppna det igen för att fortsätta." });

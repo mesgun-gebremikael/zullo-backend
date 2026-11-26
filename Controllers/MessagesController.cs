@@ -165,6 +165,17 @@ public class MessagesController : ControllerBase
             throw;
         }
 
+        // Serialize this post-commit push with block/unmatch/account closure.
+        // Committed messages remain successful even when push delivery fails.
+        try
+        {
+            await using var databaseGate = await PushInstallationService.DatabaseGate(_db);
+            await using var pushGuard = await RelationTransaction.Begin(_db, meId, dto.ToUserId);
+            var pairActive = await _db.Users.CountAsync(u =>
+                (u.Id == meId || u.Id == dto.ToUserId) && !u.IsClosed) == 2;
+            if (pairActive && await _userRelationService.IsMatchedAsync(meId, dto.ToUserId) &&
+                !await _userRelationService.IsBlockedAsync(meId, dto.ToUserId))
+            {
         try
         {
         await _chatHub.Clients.Users(meId.ToString(), dto.ToUserId.ToString()).SendAsync(
@@ -182,57 +193,32 @@ public class MessagesController : ControllerBase
 
 
         }
-        catch (Exception exception)
+        catch (Exception)
         {
             // Persistence already succeeded. Reconnection/history repairs a missed live event.
-            _logger.LogWarning(exception, "Live delivery failed for message {MessageId}", msg.Id);
+            _logger.LogWarning("Live delivery failed for message {MessageId}", msg.Id);
         }
 
 
-        var senderProfile = await _db.Profiles
-    .AsNoTracking()
-    .Where(p => p.UserId == meId)
-    .Select(p => new
-    {
-        p.DisplayName,
-        p.PhotoUrls
-    })
-    .FirstOrDefaultAsync();
 
-        var sender = senderProfile?.DisplayName;
-        var senderPhotoUrl = senderProfile?.PhotoUrls?.FirstOrDefault();
-
-        var receiver = await _db.Users
-            .AsNoTracking()
-            .Where(u => u.Id == dto.ToUserId && !u.IsClosed)
-            .Select(u => new { u.DeviceToken })
-            .FirstOrDefaultAsync();
-
-
-
-        if (!string.IsNullOrWhiteSpace(receiver?.DeviceToken))
+                var deviceToken = await _db.Users.AsNoTracking().Where(u => u.Id == dto.ToUserId)
+                    .Select(u => u.DeviceToken).SingleOrDefaultAsync();
+                if (!string.IsNullOrWhiteSpace(deviceToken))
+                {
+                    using var pushTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                    await using var tokenGate = await PushInstallationService.TokenGate(_db, deviceToken, pushTimeout.Token);
+                    if (await PushInstallationService.OwnsToken(_db, dto.ToUserId, deviceToken, pushTimeout.Token))
+                        await _pushNotificationService.SendMessageNotificationAsync(deviceToken, meId.ToString(),
+                            "", "", null, dto.ToUserId.ToString(), pushTimeout.Token);
+                }
+            }
+            await pushGuard.CommitAsync();
+        }
+        catch
         {
-            try
-            {
-                using var pushTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-
-                await _pushNotificationService.SendMessageNotificationAsync(
-                    receiver.DeviceToken,
-                    meId.ToString(),
-                    string.IsNullOrWhiteSpace(sender) ? "Nytt meddelande" : sender,
-                    trimmedText,
-                    senderPhotoUrl,
-                    dto.ToUserId.ToString(), pushTimeout.Token);
-
-                _logger.LogInformation("PUSH OK");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "PUSH FAIL");
-            }
+            // FCM errors can include tokens; keep the log free of payload details.
+            _logger.LogWarning("Message push could not be delivered; message persistence succeeded.");
         }
-
-
 
         return Ok(new MessageDto
         {

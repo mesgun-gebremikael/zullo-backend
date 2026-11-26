@@ -1,3 +1,4 @@
+using Zullo.Api.Models;
 using System.ComponentModel.DataAnnotations;
 
 namespace Zullo.Api.Dtos;
@@ -39,6 +40,9 @@ public class UpsertProfileDto : IValidatableObject
         get => _Bio;
         set { _Bio = value; _supplied.Add(nameof(Bio)); }
     }
+
+    private List<ProfilePrompt>? _ConversationPrompts;
+    public List<ProfilePrompt>? ConversationPrompts { get => _ConversationPrompts; set { _ConversationPrompts = value; _supplied.Add(nameof(ConversationPrompts)); } }
 
     private string? _PromptKey;
     [MaxLength(60)]
@@ -269,6 +273,12 @@ public class UpsertProfileDto : IValidatableObject
             yield return new ValidationResult("Gender cannot be blank.", new[] { nameof(Gender) });
         if (InterestedIn != null && !new[] { "", "Alla", "Män", "Kvinnor" }.Contains(InterestedIn.Trim()))
             yield return new ValidationResult("Unsupported discovery preference.", new[] { nameof(InterestedIn) });
+        if (ConversationPrompts != null && !Zullo.Api.Services.ConversationPrompts.IsValidCollection(ConversationPrompts, allowUnanswered: false))
+            yield return new ValidationResult("Choose at most three distinct supported questions and answer each with at most 250 characters.", new[] { nameof(ConversationPrompts) });
+        if (ConversationPrompts != null && Has(nameof(PromptKey)) &&
+            (PromptKey?.Trim() != (ConversationPrompts.FirstOrDefault()?.Key?.Trim() ?? "") ||
+             PromptAnswer?.Trim() != (ConversationPrompts.FirstOrDefault()?.Answer?.Trim() ?? "")))
+            yield return new ValidationResult("Legacy question fields must match the first question.");
         if (Has(nameof(PromptKey)) != Has(nameof(PromptAnswer)))
             yield return new ValidationResult("Supply the question and answer together.");
         if (PromptKey != null && !Zullo.Api.Services.ConversationPrompts.IsValid(PromptKey.Trim(), PromptAnswer?.Trim() ?? ""))

@@ -20,15 +20,17 @@ public class SwipeController : ControllerBase
     private readonly LikeLimitService _likeLimit;
     private readonly UserRelationService _userRelationService;
     private readonly CommerceService? _commerce;
+    private readonly PushNotificationService? _push;
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<Zullo.Api.Hubs.ChatHub>? _hub;
 
-    public SwipeController(AppDbContext db, LikeLimitService likeLimit, UserRelationService userRelationService, CommerceService? commerce = null, Microsoft.AspNetCore.SignalR.IHubContext<Zullo.Api.Hubs.ChatHub>? hub = null)
+    public SwipeController(AppDbContext db, LikeLimitService likeLimit, UserRelationService userRelationService, CommerceService? commerce = null, Microsoft.AspNetCore.SignalR.IHubContext<Zullo.Api.Hubs.ChatHub>? hub = null, PushNotificationService? push = null)
     {
         _db = db;
         _likeLimit = likeLimit;
         _userRelationService = userRelationService;
         _commerce = commerce;
         _hub = hub;
+        _push = push;
     }
 
   
@@ -90,6 +92,12 @@ public class SwipeController : ControllerBase
             });
         }
 
+        // The default model coordinates are not a real discovery location.
+        // Preserve explicit legacy coordinates, including points on either axis;
+        // a timestamp distinguishes an actual GPS fix at (0, 0) from no fix.
+        if (myProfile.LocationUpdatedAtUtc == null && myProfile.Lat == 0 && myProfile.Lng == 0)
+            return Ok(new SwipeFeedResponseDto { RadiusKm = myRadiusKm, Profiles = new() });
+
         var myLat = myProfile.Lat;
         var myLng = myProfile.Lng;
 
@@ -130,6 +138,7 @@ public class SwipeController : ControllerBase
         var candidates = await _db.Profiles.AsNoTracking()
             // Endast profiler som är markerade synliga
             .Where(p => !p.User!.IsPaused && !p.User.IsClosed && p.IsVisible)
+            .Where(p => p.LocationUpdatedAtUtc != null || p.Lat != 0 || p.Lng != 0)
             .Where(p => !_db.CommerceAccounts.Any(a => a.UserId == p.UserId && a.Incognito && a.PremiumUntilUtc > now) ||
                 _db.Likes.Any(l => l.FromUserId == p.UserId && l.ToUserId == meId))
             .Where(p => preferredGender == null || p.Gender == preferredGender)
@@ -190,12 +199,18 @@ public class SwipeController : ControllerBase
             });
         }
 
+        if (!await _db.Profiles.AnyAsync(p => p.UserId == meId))
+            return Conflict(new { code = "profile_required", message = "Complete your profile before swiping." });
         if (await _db.Users.AnyAsync(u => u.Id == meId && u.IsPaused))
             return Conflict(new { message = "Återaktivera kontot innan du swipar." });
         if (dto.TargetUserId == meId || dto.TargetUserId == Guid.Empty) return BadRequest();
         if (!await _db.Users.AnyAsync(u => u.Id == dto.TargetUserId && !u.IsPaused && !u.IsClosed)) return NotFound();
         if (_commerce != null) await _commerce.RefreshBenefitsIfSubscribed(meId);
         await using var relationTransaction = await RelationTransaction.Begin(_db, meId, dto.TargetUserId);
+        // Closure may have committed while the provider/pair lock was awaited.
+        if (!await _db.Users.AnyAsync(u => u.Id == meId && !u.IsClosed)) return Unauthorized();
+        if (!await _db.Profiles.AnyAsync(p => p.UserId == meId))
+            return Conflict(new { code = "profile_required", message = "Complete your profile before swiping." });
         if (await _db.Users.AnyAsync(u => u.Id == meId && u.IsPaused))
             return Conflict(new { message = "Återaktivera kontot innan du swipar." });
         if (!await _db.Users.AnyAsync(u => u.Id == dto.TargetUserId && !u.IsPaused && !u.IsClosed)) return NotFound();
@@ -273,18 +288,20 @@ public class SwipeController : ControllerBase
             var matchExists = await _userRelationService.IsMatchedAsync(userAId, userBId);
             if (!matchExists)
             {
-                _db.Matches.Add(new Match
-                {
-                    UserAId = userAId,
-                    UserBId = userBId
-                });
-
+                var match = new Match { UserAId = userAId, UserBId = userBId };
+                _db.Matches.Add(match);
+                _db.MatchNotifications.AddRange(
+                    new MatchNotification { MatchId = match.Id, RecipientUserId = userAId, OtherUserId = userBId },
+                    new MatchNotification { MatchId = match.Id, RecipientUserId = userBId, OtherUserId = userAId });
+                // Match + both notification records commit atomically. The pair lock
+                // and unique outbox index make retries/concurrent likes idempotent.
                 await _db.SaveChangesAsync();
             }
 
             await relationTransaction.CommitAsync();
             if (!already) await NotifyIncomingLike(dto.TargetUserId);
-            if (dto.SuperLike && !already) await NotifySuperLike(meId, dto.TargetUserId);
+            // A new match gets match notifications, not a second Superlike alert.
+            if (!matchExists) await NotifyMatchesChanged(userAId, userBId);
             return Ok(new LikeResponseDto
             {
                 Matched = true
@@ -313,6 +330,8 @@ public class SwipeController : ControllerBase
         }
 
         await using var relationTransaction = await RelationTransaction.Begin(_db, meId, dto.TargetUserId);
+        // Closure may have committed while the provider/pair lock was awaited.
+        if (!await _db.Users.AnyAsync(u => u.Id == meId && !u.IsClosed)) return Unauthorized();
         if (await _db.Users.AnyAsync(u => u.Id == meId && u.IsPaused))
             return Conflict(new { message = "Återaktivera kontot innan du swipar." });
         if (!await _db.Users.AnyAsync(u => u.Id == dto.TargetUserId && !u.IsPaused && !u.IsClosed)) return NotFound();
@@ -365,24 +384,39 @@ public class SwipeController : ControllerBase
         } catch { /* Notification delivery must not undo the committed like. */ }
     }
 
+    private async Task NotifyMatchesChanged(Guid a, Guid b)
+    {
+        if (_hub == null) return;
+        try {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            await Microsoft.AspNetCore.SignalR.ClientProxyExtensions.SendAsync(
+                _hub.Clients.Users(new[] { a.ToString(), b.ToString() }), "MatchesChanged", new { }, deadline.Token);
+        } catch { /* The durable notification worker retries push independently. */ }
+    }
+
     private async Task NotifySuperLike(Guid from, Guid to)
     {
         try
         {
+            await using var databaseGate = await PushInstallationService.DatabaseGate(_db);
+            await using var guard = await RelationTransaction.Begin(_db, from, to);
+            if (await _userRelationService.IsBlockedAsync(from, to) || await _userRelationService.IsMatchedAsync(from, to)) return;
+            if (await _db.Users.CountAsync(u => (u.Id == from || u.Id == to) && !u.IsClosed && !u.IsPaused) != 2) return;
+            var like = await _db.Likes.AsNoTracking().SingleOrDefaultAsync(l => l.FromUserId == from && l.ToUserId == to && l.IsSuperLike);
+            if (like == null) return;
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             if (_hub != null) await Microsoft.AspNetCore.SignalR.ClientProxyExtensions.SendAsync(
-                _hub.Clients.User(to.ToString()), "SuperLikeReceived", new { senderUserId = from }, deadline.Token);
-            var token = await _db.Users.AsNoTracking().Where(u => u.Id == to && !u.IsClosed).Select(u => u.DeviceToken).SingleOrDefaultAsync();
-            if (!string.IsNullOrWhiteSpace(token))
-                await FirebaseAdmin.Messaging.FirebaseMessaging.DefaultInstance.SendAsync(new FirebaseAdmin.Messaging.Message
-                {
-                    Token = token,
-                    Notification = new FirebaseAdmin.Messaging.Notification { Title = "ZULLO ⭐", Body = "Någon har supergillat dig. Öppna Swipa för att se profilen." },
-                    Android = new FirebaseAdmin.Messaging.AndroidConfig { Priority = FirebaseAdmin.Messaging.Priority.High, Notification = new FirebaseAdmin.Messaging.AndroidNotification { ChannelId = "messages", Sound = "default" } },
-                    Data = new Dictionary<string, string> { ["type"] = "super_like", ["recipientUserId"] = to.ToString() }
-                }, deadline.Token);
+                _hub.Clients.User(to.ToString()), "SuperLikeReceived", new { }, deadline.Token);
+            var token = await _db.Users.AsNoTracking().Where(u => u.Id == to).Select(u => u.DeviceToken).SingleOrDefaultAsync();
+            if (_push != null && !string.IsNullOrWhiteSpace(token))
+            {
+                await using var tokenGate = await PushInstallationService.TokenGate(_db, token, deadline.Token);
+                if (await PushInstallationService.OwnsToken(_db, to, token, deadline.Token))
+                    await _push.SendSuperLikeNotificationAsync(token, to.ToString(), like.Id.ToString(), deadline.Token);
+            }
+            await guard.CommitAsync();
         }
-        catch (Exception ex) { HttpContext.RequestServices.GetService<ILogger<SwipeController>>()?.LogWarning(ex, "Superlike notification could not be delivered."); }
+        catch { HttpContext.RequestServices.GetService<ILogger<SwipeController>>()?.LogWarning("Superlike notification could not be delivered."); }
     }
 
     [HttpPost("rewind")]

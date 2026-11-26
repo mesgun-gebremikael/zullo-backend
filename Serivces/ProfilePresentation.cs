@@ -13,7 +13,9 @@ public static class ProfilePresentation
                 DisplayName = (p.DisplayName ?? "").Trim(),
                 Age = p.Age,
                 Bio = (p.Bio ?? "").Trim(),
-                PromptKey = p.PromptKey, PromptAnswer = p.PromptAnswer,
+                ConversationPrompts = ConversationPrompts.Read(p),
+                PromptKey = ConversationPrompts.Read(p).FirstOrDefault()?.Key ?? "",
+                PromptAnswer = ConversationPrompts.Read(p).FirstOrDefault()?.Answer ?? "",
 
                 Intention = (p.Intention ?? "").Trim(),
                 Religion = (p.Religion ?? "").Trim(),

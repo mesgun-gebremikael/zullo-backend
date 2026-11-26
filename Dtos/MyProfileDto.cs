@@ -17,6 +17,7 @@ public class MyProfileDto
     public int DiscoveryMaxAge { get; set; }
     public int MatchRadiusKm { get; set; }
     public string Bio { get; set; } = "";
+    public List<ProfilePrompt> ConversationPrompts { get; set; } = new();
     public string PromptKey { get; set; } = "";
     public string PromptAnswer { get; set; } = "";
 

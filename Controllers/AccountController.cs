@@ -76,9 +76,18 @@ public class AccountController(AppDbContext db, IHubContext<ChatHub> hub, ILogge
         db.Skips.RemoveRange(await db.Skips.Where(s => s.FromUserId == me || s.ToUserId == me).ToListAsync());
         db.Blocks.RemoveRange(await db.Blocks.Where(b => b.FromUserId == me || b.BlockedUserId == me).ToListAsync());
         // Retain only a pseudonymous account key for payment replay protection and safety reports.
+        if (!string.IsNullOrEmpty(account.Email))
+            db.PendingEmailRegistrations.RemoveRange(await db.PendingEmailRegistrations.Where(p => p.Email == account.Email).ToListAsync());
         account.IsClosed = true; account.IsPaused = true; account.ClosedAtUtc = DateTime.UtcNow;
         account.Email = null; account.PhoneNumber = null; account.GoogleSubject = null;
         account.PasswordHash = ""; account.DeviceToken = null; account.IsVerified = false;
+        // Conditional SQL rechecks ownership after any competing row lock; a
+        // device that switched to another account during closure stays theirs.
+        await db.PushInstallations.Where(i => i.UserId == me).ExecuteUpdateAsync(setters => setters
+            .SetProperty(i => i.UserId, (Guid?)null)
+            .SetProperty(i => i.Token, (string?)null)
+            .SetProperty(i => i.TokenHash, (string?)null));
+
         var commerce = await db.CommerceAccounts.SingleOrDefaultAsync(a => a.UserId == me);
         if (commerce != null) {
             commerce.Incognito = false; commerce.HideActivity = false; commerce.BoostUntilUtc = null;

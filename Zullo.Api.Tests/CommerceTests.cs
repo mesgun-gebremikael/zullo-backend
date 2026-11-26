@@ -33,7 +33,7 @@ public class CommerceTests
     {
         await using var db = app.Db();
         foreach (var (id, name) in new[] { (app.A, "A"), (app.B, "B"), (app.C, "C") })
-            db.Profiles.Add(new Profile { UserId = id, DisplayName = name, Gender = "Man", Age = 25, IsVisible = true,
+            db.Profiles.Add(new Profile { UserId = id, DisplayName = name, Gender = "Man", Age = 25, IsVisible = true, Lat = 59.3293, Lng = 18.0686,
                 PhotoUrls = new() { "https://example.test/1", "https://example.test/2" } });
         await db.SaveChangesAsync();
     }

@@ -79,7 +79,7 @@ public class AuthenticationProtectionTests
     }
 
     [Fact]
-    public async Task ValidLoginAndRegistrationStillReturnTokens()
+    public async Task LegacyLoginReturnsTokenButNewRegistrationRequiresEmailProof()
     {
         await using var app = await AuthApp.Start();
         using var client = app.Client("192.0.2.1");
@@ -95,8 +95,12 @@ public class AuthenticationProtectionTests
         {
             email = "new@example.test", password = "new-password-123"
         });
-        Assert.Equal(HttpStatusCode.OK, registration.StatusCode);
-        var registered = (await registration.Content.ReadFromJsonAsync<AuthResponseDto>())!;
+        Assert.Equal(HttpStatusCode.Accepted, registration.StatusCode);
+        Assert.DoesNotContain("token", await registration.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+        var pending = (await registration.Content.ReadFromJsonAsync<EmailChallenge>())!;
+        var verified = await client.PostAsJsonAsync("/api/auth/verify-email", new { pending.ChallengeId, code = app.Email.Code });
+        Assert.Equal(HttpStatusCode.OK, verified.StatusCode);
+        var registered = (await verified.Content.ReadFromJsonAsync<AuthResponseDto>())!;
         Assert.False(string.IsNullOrWhiteSpace(registered.Token));
         Assert.NotEqual(loggedIn.UserId, registered.UserId);
     }
@@ -131,6 +135,7 @@ public class AuthenticationProtectionTests
     {
         private readonly SqliteConnection _connection = new("Data Source=:memory:");
         private IHost _host = null!;
+        public TestVerificationEmailSender Email { get; } = new();
 
         public static async Task<AuthApp> Start()
         {
@@ -153,6 +158,8 @@ public class AuthenticationProtectionTests
                 services.AddControllers().AddApplicationPart(typeof(AuthController).Assembly);
                 services.AddDbContext<AppDbContext>(o => o.UseSqlite(app._connection));
                 services.AddAuthenticationProtection();
+                services.AddSingleton<IVerificationEmailSender>(app.Email);
+                services.AddScoped<PendingEmailRegistrationService>();
             }).Configure(builder =>
             {
                 // Only this test host accepts an address override, not application code.

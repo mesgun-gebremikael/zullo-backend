@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Zullo.Api.Data;
 using Zullo.Api.Dtos;
@@ -36,8 +37,9 @@ namespace Zullo.Api.Controllers
             if (dto.Has(nameof(dto.DisplayName))) profile.DisplayName = dto.DisplayName!.Trim();
             if (dto.Has(nameof(dto.Age))) profile.Age = dto.Age!.Value;
             if (dto.Has(nameof(dto.Gender))) profile.Gender = dto.Gender!.Trim();
-            if (dto.Has(nameof(dto.PromptKey))) profile.PromptKey = dto.PromptKey!.Trim();
-            if (dto.Has(nameof(dto.PromptAnswer))) profile.PromptAnswer = dto.PromptAnswer!.Trim();
+            if (dto.Has(nameof(dto.ConversationPrompts))) ConversationPrompts.Assign(profile, dto.ConversationPrompts!);
+            else if (dto.Has(nameof(dto.PromptKey))) ConversationPrompts.Assign(profile,
+                ConversationPrompts.MergeLegacy(profile, dto.PromptKey!.Trim(), dto.PromptAnswer!.Trim()));
             if (dto.Has(nameof(dto.Bio))) profile.Bio = dto.Bio!.Trim();
             if (dto.Has(nameof(dto.Intention))) profile.Intention = dto.Intention!.Trim();
             if (dto.Has(nameof(dto.Religion))) profile.Religion = dto.Religion!.Trim();
@@ -115,7 +117,8 @@ namespace Zullo.Api.Controllers
                 if (photoError != null) return BadRequest(new { code = "photo_ownership_required", message = photoError });
             }
             // Mappar DTO till Profile så logiken ligger på ett ställe
-            MapUpsertProfileDtoToProfile(dto, profile);
+            try { MapUpsertProfileDtoToProfile(dto, profile); }
+            catch (ArgumentException) { return BadRequest(new { message = "Samma samtalsfråga får inte väljas flera gånger." }); }
             if (dto.Has(nameof(dto.MatchRadiusKm))) user.MatchRadiusKm = dto.MatchRadiusKm!.Value;
 
             var draft = await _db.OnboardingDrafts.SingleOrDefaultAsync(d => d.UserId == meId);
@@ -148,10 +151,11 @@ namespace Zullo.Api.Controllers
                 });
             }
 
-            var profile = await _db.Profiles
-    .AsNoTracking()
-    .Where(p => p.UserId == meId)
-    .Select(p => new MyProfileDto
+            var p = await _db.Profiles.AsNoTracking().Include(profile => profile.User)
+                .FirstOrDefaultAsync(profile => profile.UserId == meId);
+            if (p == null) return NotFound(new ErrorMessageResponseDto { Message = "No profile yet." });
+            var prompts = ConversationPrompts.Read(p);
+            var profile = new MyProfileDto
     {
         Id = p.Id,
         UserId = p.UserId,
@@ -163,8 +167,9 @@ namespace Zullo.Api.Controllers
         DiscoveryAgeConfigured = p.User.DiscoveryAgeConfigured,
         DiscoveryMinAge = p.User.DiscoveryMinAge, DiscoveryMaxAge = p.User.DiscoveryMaxAge,
         Bio = p.Bio,
-        PromptKey = p.PromptKey,
-        PromptAnswer = p.PromptAnswer,
+        ConversationPrompts = prompts,
+        PromptKey = prompts.FirstOrDefault()?.Key ?? "",
+        PromptAnswer = prompts.FirstOrDefault()?.Answer ?? "",
         Intention = p.Intention,
         Religion = p.Religion,
         Workout = p.Workout,
@@ -190,16 +195,7 @@ namespace Zullo.Api.Controllers
         Lng = p.Lng,
         CountryCode = p.CountryCode,
         IsVisible = p.IsVisible
-    })
-    .FirstOrDefaultAsync();
-
-            if (profile == null)
-            {
-                return NotFound(new ErrorMessageResponseDto
-                {
-                    Message = "No profile yet."
-                });
-            }
+    };
 
             return Ok(profile);
         }
@@ -246,7 +242,7 @@ namespace Zullo.Api.Controllers
         // POST /me/device-token
         // Spara Firebase device token
         // ===============================
-        [HttpPost("device-token")]
+        [HttpPost("device-token"), EnableRateLimiting("commerce")]
         public async Task<IActionResult> SaveDeviceToken([FromBody] SaveDeviceTokenDto dto)
         {
             Guid meId;
@@ -259,80 +255,28 @@ namespace Zullo.Api.Controllers
                 });
             }
 
-            var trimmedToken = dto.Token.Trim();
-
-            if (string.IsNullOrWhiteSpace(trimmedToken))
-            {
-                return BadRequest(new ErrorMessageResponseDto
-                {
-                    Message = "Device token is required."
-                });
-            }
-
-            var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == meId);
-            if (user == null)
-            {
-                return NotFound(new ErrorMessageResponseDto
-                {
-                    Message = "User not found."
-                });
-            }
-
-            // Viktigt:
-            // samma device token får bara tillhöra ett konto åt gången.
-            // Därför rensar jag först token från alla andra users.
-            var otherUsersWithSameToken = await _db.Users
-                .Where(u => u.Id != meId && u.DeviceToken == trimmedToken)
-                .ToListAsync();
-
-            foreach (var otherUser in otherUsersWithSameToken)
-            {
-                otherUser.DeviceToken = null;
-            }
-
-            user.DeviceToken = trimmedToken;
-
-            await _db.SaveChangesAsync();
-
-            return Ok(new
-            {
-                message = "Device token saved"
-            });
+            var result = await PushInstallationService.Update(_db, meId, dto.Token,
+                dto.InstallationId, dto.Version, clear: false, HttpContext.RequestAborted);
+            return PushClaimResponse(result, "Device token saved");
         }
 
-        [HttpPost("device-token/clear")]
-        public async Task<IActionResult> ClearDeviceToken()
+        [HttpPost("device-token/clear"), EnableRateLimiting("commerce")]
+        public async Task<IActionResult> ClearDeviceToken(
+            [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] ClearDeviceTokenDto? dto = null)
         {
-            Guid meId;
-            try { meId = CurrentUserService.GetUserIdOrThrow(User); }
-            catch
-            {
-                return Unauthorized(new ErrorMessageResponseDto
-                {
-                    Message = "Invalid token."
-                });
-            }
-
-            var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == meId);
-            if (user == null)
-            {
-                return NotFound(new ErrorMessageResponseDto
-                {
-                    Message = "User not found."
-                });
-            }
-
-            // Logout / account switch:
-            // koppla loss device token från nuvarande konto.
-            user.DeviceToken = null;
-
-            await _db.SaveChangesAsync();
-
-            return Ok(new
-            {
-                message = "Device token cleared"
-            });
+            if (!CurrentUserService.TryGetUserId(User, out var me)) return Unauthorized();
+            var result = await PushInstallationService.Update(_db, me, null,
+                dto?.InstallationId, dto?.Version, clear: true, HttpContext.RequestAborted);
+            return PushClaimResponse(result, "Device token cleared");
         }
+
+        private IActionResult PushClaimResponse(PushClaimResult result, string message) => result switch
+        {
+            PushClaimResult.Saved => Ok(new { message }),
+            PushClaimResult.Stale => Conflict(new { code = "push_registration_stale", message = "A newer device registration already exists." }),
+            PushClaimResult.MissingAccount => NotFound(new ErrorMessageResponseDto { Message = "User not found." }),
+            _ => BadRequest(new ErrorMessageResponseDto { Message = "Invalid device registration." })
+        };
 
     }
 }

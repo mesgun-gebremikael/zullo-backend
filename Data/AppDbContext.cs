@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore;
 using Zullo.Api.Models;
 
@@ -11,11 +13,14 @@ public class AppDbContext : DbContext
 
     public DbSet<Like> Likes => Set<Like>();
     public DbSet<Match> Matches => Set<Match>();
+    public DbSet<MatchNotification> MatchNotifications => Set<MatchNotification>();
+    public DbSet<PushInstallation> PushInstallations => Set<PushInstallation>();
     public DbSet<Skip> Skips => Set<Skip>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Report> Reports => Set<Report>();
     public DbSet<Block> Blocks => Set<Block>();
     public DbSet<OnboardingDraft> OnboardingDrafts => Set<OnboardingDraft>();
+    public DbSet<PendingEmailRegistration> PendingEmailRegistrations => Set<PendingEmailRegistration>();
     public DbSet<OwnedPhoto> OwnedPhotos => Set<OwnedPhoto>();
     public DbSet<AccountRemovalRequest> AccountRemovalRequests => Set<AccountRemovalRequest>();
     public DbSet<CommerceAccount> CommerceAccounts => Set<CommerceAccount>();
@@ -47,6 +52,34 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<PushInstallation>().HasKey(i => i.Id);
+        modelBuilder.Entity<PushInstallation>().Property(i => i.Token).HasMaxLength(4096);
+        modelBuilder.Entity<PushInstallation>().Property(i => i.TokenHash).HasMaxLength(64);
+        modelBuilder.Entity<PushInstallation>().HasIndex(i => i.UserId);
+        modelBuilder.Entity<PushInstallation>().HasIndex(i => i.TokenHash).IsUnique().HasFilter("\"TokenHash\" IS NOT NULL");
+        modelBuilder.Entity<PushInstallation>().HasOne<User>().WithMany().HasForeignKey(i => i.UserId).OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<PurchaseGrant>().Property(g => g.ProviderTransactionId).HasMaxLength(180);
+        modelBuilder.Entity<PurchaseGrant>().HasIndex(g => new { g.UserId, g.ProductId, g.ProviderTransactionId });
+        modelBuilder.Entity<PendingEmailRegistration>().HasKey(p => p.Id);
+        modelBuilder.Entity<PendingEmailRegistration>().HasIndex(p => p.Email).IsUnique();
+        modelBuilder.Entity<PendingEmailRegistration>().HasIndex(p => p.ExpiresAtUtc);
+        modelBuilder.Entity<PendingEmailRegistration>().HasIndex(p => p.ChallengeId).IsUnique();
+        modelBuilder.Entity<PendingEmailRegistration>().Property(p => p.Email).HasMaxLength(200);
+        modelBuilder.Entity<PendingEmailRegistration>().Property(p => p.PasswordHash).HasMaxLength(255);
+        modelBuilder.Entity<PendingEmailRegistration>().Property(p => p.CodeHash).HasMaxLength(64);
+        modelBuilder.Entity<MatchNotification>().HasKey(n => n.Id);
+        modelBuilder.Entity<MatchNotification>().HasIndex(n => new { n.MatchId, n.RecipientUserId }).IsUnique();
+        modelBuilder.Entity<MatchNotification>().HasIndex(n => new { n.SentAtUtc, n.CancelledAtUtc, n.NextAttemptAtUtc });
+        modelBuilder.Entity<MatchNotification>().HasOne<Match>().WithMany().HasForeignKey(n => n.MatchId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Profile>().Property(p => p.ConversationPrompts)
+            .HasConversion(v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => JsonSerializer.Deserialize<List<ProfilePrompt>>(v, (JsonSerializerOptions?)null) ?? new List<ProfilePrompt>())
+            .HasColumnType("jsonb")
+            .HasDefaultValueSql("'[]'")
+            .Metadata.SetValueComparer(new ValueComparer<List<ProfilePrompt>>(
+                (a, b) => a != null && b != null ? a.SequenceEqual(b) : a == b,
+                v => v.Aggregate(0, (hash, entry) => HashCode.Combine(hash, entry.GetHashCode())),
+                v => v.ToList()));
         modelBuilder.Entity<Block>().Property(b => b.SnapshotDisplayName).HasMaxLength(100);
         modelBuilder.Entity<Block>().Property(b => b.SnapshotPhotoUrl).HasMaxLength(2048);
         modelBuilder.Entity<Profile>().HasIndex(p => new { p.IsVisible, p.Lat });

@@ -19,6 +19,8 @@ namespace Zullo.Api.Models
         public string? DeviceToken { get; set; } // Firebase push token
 
         public bool IsVerified { get; set; } = false; // verified login method
+        // Null on legacy accounts: the old IsVerified flag was not proof of email ownership.
+        public DateTime? EmailVerifiedAtUtc { get; set; }
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
         // Tinder-like free likes

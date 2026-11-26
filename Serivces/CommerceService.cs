@@ -7,10 +7,11 @@ using Zullo.Api.Models;
 
 namespace Zullo.Api.Services;
 
-public record VerifiedCredit(string Key, string ProductId, int SuperLikes, int Boosts);
+public record VerifiedCredit(string Key, string ProductId, int SuperLikes, int Boosts, string? ProviderTransactionId = null, bool Refunded = false);
 public record VerifiedCommerce(long SnapshotMs, DateTime? PremiumUntil, DateTime? PeriodStart, List<VerifiedCredit> Credits, DateTime? ActivityPrivacyUntil = null);
 public record CommerceState(bool CheckoutEnabled, bool Premium, DateTime? PremiumUntilUtc, int SuperLikes,
-    int Boosts, DateTime? BoostUntilUtc, bool HideActivity, bool Incognito, bool CanHideActivity = false, DateTime? ActivityPrivacyUntilUtc = null);
+    int Boosts, DateTime? BoostUntilUtc, bool HideActivity, bool Incognito, bool CanHideActivity = false, DateTime? ActivityPrivacyUntilUtc = null, int IncludedSuperLikes = 0, int PurchasedSuperLikes = 0,
+    int IncludedBoosts = 0, int PurchasedBoosts = 0, DateTime? NextSuperLikeRefreshUtc = null, DateTime? NextBoostRefreshUtc = null);
 
 public interface ICommerceVerifier
 {
@@ -39,12 +40,12 @@ public class RevenueCatVerifier(HttpClient client, IConfiguration config, IHostE
         if (subscriber.GetProperty("original_app_user_id").GetString() != user.ToString())
             throw new InvalidOperationException("Purchase account does not match the signed-in account.");
         var sandboxAllowed = !environment.IsProduction() && config.GetValue<bool>("Commerce:AllowSandbox");
-        (DateTime? Expiry, DateTime? Period) Subscription(string entitlement, string knownProduct)
+        (DateTime? Expiry, DateTime? Period) Subscription(string entitlement, Func<string, bool> knownProduct)
         {
             if (!subscriber.TryGetProperty("entitlements", out var entitlements) ||
                 !entitlements.TryGetProperty(entitlement, out var benefit)) return (null, null);
             var product = benefit.GetProperty("product_identifier").GetString()!;
-            if (product.Split(':')[0] != knownProduct ||
+            if (!knownProduct(product) ||
                 !subscriber.TryGetProperty("subscriptions", out var subscriptions) ||
                 !subscriptions.TryGetProperty(product, out var subscription) ||
                 !subscription.TryGetProperty("store", out var store) ||
@@ -56,8 +57,8 @@ public class RevenueCatVerifier(HttpClient client, IConfiguration config, IHostE
             if (grace > expiry) expiry = grace;
             return (expiry, Date(benefit, "purchase_date"));
         }
-        var (expires, period) = Subscription("premium", "zullo_premium_monthly");
-        var (activityExpiry, _) = Subscription("activity_privacy", "zullo_hide_activity_monthly");
+        var (expires, period) = Subscription("premium", CommerceProducts.IsPremium);
+        var (activityExpiry, _) = Subscription("activity_privacy", CommerceProducts.IsLegacyActivity);
         var credits = new List<VerifiedCredit>();
         if (subscriber.TryGetProperty("non_subscriptions", out var purchases))
         foreach (var product in purchases.EnumerateObject())
@@ -67,7 +68,7 @@ public class RevenueCatVerifier(HttpClient client, IConfiguration config, IHostE
             foreach (var purchase in product.Value.EnumerateArray())
             {
                 if (purchase.GetProperty("is_sandbox").GetBoolean() && !sandboxAllowed) continue;
-                if (purchase.TryGetProperty("is_refunded", out var refunded) && refunded.GetBoolean()) continue;
+                var isRefunded = purchase.TryGetProperty("is_refunded", out var refunded) && refunded.GetBoolean();
                 // Older v1 responses expose only a RevenueCat ID. Wait for the signed webhook
                 // rather than confusing that ID with a store transaction and double-granting.
                 if (!purchase.TryGetProperty("store_transaction_id", out var transaction)) continue;
@@ -75,7 +76,10 @@ public class RevenueCatVerifier(HttpClient client, IConfiguration config, IHostE
                 var store = purchase.GetProperty("store").GetString()!.ToLowerInvariant();
                 if (store is not ("app_store" or "play_store")) continue;
                 if (string.IsNullOrWhiteSpace(id) || id.Length > 180) throw new InvalidOperationException("Invalid store transaction.");
-                credits.Add(new VerifiedCredit($"{store}:{id}", product.Name, amounts.Item1, amounts.Item2));
+                var providerId = purchase.TryGetProperty("id", out var providerTransaction) ? providerTransaction.ToString() : null;
+                if (providerId?.Length > 180) throw new InvalidOperationException("Invalid provider transaction.");
+                credits.Add(new VerifiedCredit($"{store}:{id}", product.Name, amounts.Item1, amounts.Item2,
+                    string.IsNullOrWhiteSpace(providerId) ? null : providerId, isRefunded));
             }
         }
         return new VerifiedCommerce(root.GetProperty("request_date_ms").GetInt64(), expires, period, credits, activityExpiry);
@@ -112,14 +116,25 @@ public class CommerceService(AppDbContext db, ICommerceVerifier verifier)
         RefreshAllowances(account);
         return account;
     }
-    public static void RefreshAllowances(CommerceAccount account)
+    // Annual and monthly subscribers receive the same monthly Boost allowance.
+    // Derive each boundary from the verified anchor, avoiding Jan31→Feb28→Mar28 drift.
+    public static (DateTime Start, DateTime Next)? BoostWindow(CommerceAccount account, DateTime now)
     {
-        var now = DateTime.UtcNow;
-        if (!Premium(account)) return;
-        if (account.BoostAllowancePeriodUtc != account.PremiumPeriodStartUtc)
+        if (account.PremiumPeriodStartUtc is not { } anchor || anchor > now) return null;
+        var months = (now.Year - anchor.Year) * 12 + now.Month - anchor.Month;
+        if (anchor.AddMonths(months) > now) months--;
+        return (anchor.AddMonths(months), anchor.AddMonths(months + 1));
+    }
+
+    public static void RefreshAllowances(CommerceAccount account, DateTime? at = null)
+    {
+        var now = at ?? DateTime.UtcNow;
+        if (account.PremiumUntilUtc <= now || account.PremiumUntilUtc == null) return;
+        var window = BoostWindow(account, now);
+        if (window != null && account.BoostAllowancePeriodUtc != window.Value.Start)
         {
             account.IncludedBoosts = 1;
-            account.BoostAllowancePeriodUtc = account.PremiumPeriodStartUtc;
+            account.BoostAllowancePeriodUtc = window.Value.Start;
         }
         if (account.NextSuperLikeRefreshUtc <= now)
         {
@@ -141,7 +156,7 @@ public class CommerceService(AppDbContext db, ICommerceVerifier verifier)
         if (verifier.Enabled && (force || existing?.LastVerifiedUtc == null || existing.LastVerifiedUtc < DateTime.UtcNow.AddMinutes(-2)))
         {
             try { verified = await verifier.Fetch(user, cancellation); }
-            catch (Exception ex) when (!force && ex is HttpRequestException or TaskCanceledException)
+            catch (Exception ex) when (!force && ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException or FormatException or KeyNotFoundException)
             { checkoutHealthy = false; /* Preserve previously verified rights; never fabricate a purchase. */ }
         }
         await using var transaction = await Begin(user);
@@ -155,11 +170,29 @@ public class CommerceService(AppDbContext db, ICommerceVerifier verifier)
             account.LastVerifiedUtc = DateTime.UtcNow;
             foreach (var credit in verified.Credits.DistinctBy(c => c.Key))
             {
-                if (await db.PurchaseGrants.AnyAsync(g => g.TransactionKey == credit.Key, cancellation)) continue;
+                var existingGrant = await db.PurchaseGrants.SingleOrDefaultAsync(g => g.TransactionKey == credit.Key, cancellation);
+                if (existingGrant != null)
+                {
+                    // Backfill an authenticated alias without granting again, reviving a
+                    // refund or moving a transaction between accounts/products.
+                    if (existingGrant.UserId == user && existingGrant.ProductId == credit.ProductId &&
+                        existingGrant.ProviderTransactionId == null)
+                        existingGrant.ProviderTransactionId = credit.ProviderTransactionId;
+                    if (existingGrant.UserId == user && existingGrant.ProductId == credit.ProductId && credit.Refunded && !existingGrant.Refunded)
+                    {
+                        account.PurchasedSuperLikes -= existingGrant.SuperLikes;
+                        account.PurchasedBoosts -= existingGrant.Boosts;
+                        existingGrant.Refunded = true;
+                    }
+                    continue;
+                }
                 db.PurchaseGrants.Add(new PurchaseGrant { TransactionKey = credit.Key, UserId = user, ProductId = credit.ProductId,
-                    SuperLikes = credit.SuperLikes, Boosts = credit.Boosts });
-                account.PurchasedSuperLikes = checked(account.PurchasedSuperLikes + credit.SuperLikes);
-                account.PurchasedBoosts = checked(account.PurchasedBoosts + credit.Boosts);
+                    ProviderTransactionId = credit.ProviderTransactionId, Refunded = credit.Refunded, SuperLikes = credit.SuperLikes, Boosts = credit.Boosts });
+                if (!credit.Refunded)
+                {
+                    account.PurchasedSuperLikes = checked(account.PurchasedSuperLikes + credit.SuperLikes);
+                    account.PurchasedBoosts = checked(account.PurchasedBoosts + credit.Boosts);
+                }
             }
             RefreshAllowances(account);
         }
@@ -194,12 +227,22 @@ public class CommerceService(AppDbContext db, ICommerceVerifier verifier)
         await transaction.CommitAsync(cancellation);
     }
 
-    public CommerceState ToState(CommerceAccount account) => new(verifier.Enabled, Premium(account), account.PremiumUntilUtc,
-        Math.Max(0, account.PurchasedSuperLikes) + (Premium(account) ? account.IncludedSuperLikes : 0),
-        Math.Max(0, account.PurchasedBoosts) + (Premium(account) ? account.IncludedBoosts : 0),
-        account.BoostUntilUtc > DateTime.UtcNow ? account.BoostUntilUtc : null,
-        CanHideActivity(account) && account.HideActivity, Premium(account) && account.Incognito,
-        CanHideActivity(account), account.ActivityPrivacyUntilUtc);
+    public CommerceState ToState(CommerceAccount account)
+    {
+        var premium = Premium(account);
+        var includedSuperLikes = premium ? account.IncludedSuperLikes : 0;
+        var includedBoosts = premium ? account.IncludedBoosts : 0;
+        var purchasedSuperLikes = Math.Max(0, account.PurchasedSuperLikes);
+        var purchasedBoosts = Math.Max(0, account.PurchasedBoosts);
+        return new(verifier.Enabled, premium, account.PremiumUntilUtc,
+            purchasedSuperLikes + includedSuperLikes, purchasedBoosts + includedBoosts,
+            account.BoostUntilUtc > DateTime.UtcNow ? account.BoostUntilUtc : null,
+            CanHideActivity(account) && account.HideActivity, premium && account.Incognito,
+            CanHideActivity(account), account.ActivityPrivacyUntilUtc,
+            includedSuperLikes, purchasedSuperLikes, includedBoosts, purchasedBoosts,
+            premium ? account.NextSuperLikeRefreshUtc : null,
+            premium ? BoostWindow(account, DateTime.UtcNow)?.Next : null);
+    }
     public static bool ConsumeSuperLike(CommerceAccount account)
     {
         RefreshAllowances(account);

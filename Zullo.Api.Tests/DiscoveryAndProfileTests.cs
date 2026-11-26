@@ -156,4 +156,88 @@ public class DiscoveryAndProfileTests
         Assert.False((await second.Content.ReadFromJsonAsync<JsonObject>())!["locationChanged"]!.GetValue<bool>());
     }
 
+    [Fact]
+    public async Task UnknownDefaultCoordinatesNeverCreateAFalseNearbyPool()
+    {
+        await using var app = await TestApp.Start(); await Seed(app); using var a = app.Client(app.A);
+        await using (var db = app.Db()) {
+            foreach (var profile in db.Profiles) { profile.Lat = 0; profile.Lng = 0; profile.LocationUpdatedAtUtc = null; }
+            var user = await db.Users.FindAsync(app.A); user!.ExpandDistance = user.ExpandAge = true;
+            await db.SaveChangesAsync();
+        }
+        async Task<JsonArray> Feed() => (await a.GetFromJsonAsync<JsonObject>("/swipe/feed"))!["profiles"]!.AsArray();
+        Assert.Empty(await Feed());
+        // Even a known viewer must not be shown a peer with no real position.
+        await using (var db = app.Db()) { (await db.Profiles.SingleAsync(p => p.UserId == app.A)).LocationUpdatedAtUtc = DateTime.UtcNow; await db.SaveChangesAsync(); }
+        Assert.Empty(await Feed());
+        // (0, 0) itself is valid when explicitly supplied by a real GPS update.
+        await using (var db = app.Db()) { (await db.Profiles.SingleAsync(p => p.UserId == app.B)).LocationUpdatedAtUtc = DateTime.UtcNow; await db.SaveChangesAsync(); }
+        Assert.Single(await Feed());
+    }
+
+    [Fact]
+    public async Task EachFallbackToggleIsAppliedAndTurningItOffRestoresStrictLimits()
+    {
+        await using var app = await TestApp.Start(); await Seed(app, age: 34); using var a = app.Client(app.A);
+        await a.PatchAsJsonAsync("/me/discovery-settings", new { minAge = 25, maxAge = 30 });
+        async Task<JsonArray> Feed() => (await a.GetFromJsonAsync<JsonObject>("/swipe/feed"))!["profiles"]!.AsArray();
+        Assert.Empty(await Feed());
+        await a.PatchAsJsonAsync("/me/discovery-settings", new { expandAge = true }); Assert.Empty(await Feed());
+        await a.PatchAsJsonAsync("/me/discovery-settings", new { expandAge = false, expandDistance = true }); Assert.Empty(await Feed());
+        await a.PatchAsJsonAsync("/me/discovery-settings", new { expandAge = true });
+        var expanded = await Feed(); Assert.Single(expanded);
+        Assert.True(expanded[0]!["outsideDistance"]!.GetValue<bool>()); Assert.True(expanded[0]!["outsideAge"]!.GetValue<bool>());
+        await a.PatchAsJsonAsync("/me/discovery-settings", new { expandDistance = false }); Assert.Empty(await Feed());
+    }
+
+    [Fact]
+    public async Task AgeFallbackNeverIncludesMinorsAndStillReturnsAnEligibleAdult()
+    {
+        await using var app = await TestApp.Start(); await Seed(app, age: 17, lng: 18.01); using var a = app.Client(app.A);
+        await a.PatchAsJsonAsync("/me/discovery-settings", new { minAge = 18, maxAge = 18, expandAge = true });
+        async Task<JsonArray> Feed() => (await a.GetFromJsonAsync<JsonObject>("/swipe/feed"))!["profiles"]!.AsArray();
+        Assert.Empty(await Feed());
+        await using (var db = app.Db()) { (await db.Profiles.SingleAsync(p => p.UserId == app.B)).Age = 19; await db.SaveChangesAsync(); }
+        Assert.Single(await Feed());
+        await a.PatchAsJsonAsync("/me/discovery-settings", new { expandAge = false }); Assert.Empty(await Feed());
+    }
+
+    [Theory]
+    [InlineData("hidden")]
+    [InlineData("paused")]
+    [InlineData("closed")]
+    [InlineData("incognito")]
+    [InlineData("one-photo")]
+    public async Task ExpandedFallbackNeverBypassesCandidatePrivacyOrEligibility(string restriction)
+    {
+        await using var app = await TestApp.Start(); await Seed(app, age: 34); using var a = app.Client(app.A);
+        await a.PatchAsJsonAsync("/me/discovery-settings", new { minAge = 25, maxAge = 30, expandAge = true, expandDistance = true });
+        await using (var db = app.Db()) {
+            var peer = await db.Profiles.SingleAsync(p => p.UserId == app.B);
+            var user = await db.Users.FindAsync(app.B);
+            if (restriction == "hidden") peer.IsVisible = false;
+            if (restriction == "paused") user!.IsPaused = true;
+            if (restriction == "closed") user!.IsClosed = true;
+            if (restriction == "one-photo") peer.PhotoUrls = ["https://a.test/one"];
+            if (restriction == "incognito") db.CommerceAccounts.Add(new CommerceAccount { UserId = app.B, Incognito = true, PremiumUntilUtc = DateTime.UtcNow.AddDays(1) });
+            await db.SaveChangesAsync();
+        }
+        Assert.Empty((await a.GetFromJsonAsync<JsonObject>("/swipe/feed"))!["profiles"]!.AsArray());
+    }
+
+    [Fact]
+    public async Task ARealLocationUpdateMovesTheDiscoveryCentreToTheTravelDestination()
+    {
+        await using var app = await TestApp.Start(); await Seed(app); using var a = app.Client(app.A);
+        await using (var db = app.Db()) {
+            var peer = await db.Profiles.SingleAsync(p => p.UserId == app.B); peer.Lat = 40.4168; peer.Lng = -3.7038;
+            await db.SaveChangesAsync();
+        }
+        async Task<JsonArray> Feed() => (await a.GetFromJsonAsync<JsonObject>("/swipe/feed"))!["profiles"]!.AsArray();
+        Assert.Empty(await Feed());
+        var response = await a.PatchAsJsonAsync("/me/discovery-settings", new { automaticLocation = true, lat = 40.4168, lng = -3.7038, locationName = "Madrid, España" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Single(await Feed());
+    }
+
 }
