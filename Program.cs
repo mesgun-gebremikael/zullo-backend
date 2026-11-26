@@ -34,6 +34,10 @@ namespace Zullo.Api
                 return;
             }
 
+            // Validate before initializing external services. Design-time EF tooling above
+            // needs no serving credentials; every real host must pass this check.
+            var jwtKey = JwtSigningKey.Require(builder.Configuration["Jwt:Key"], builder.Environment.IsDevelopment());
+
             // Firebase init
             FirebaseApp.Create(new AppOptions()
             {
@@ -123,9 +127,6 @@ namespace Zullo.Api
             // ================================
             //  JWT AUTHENTICATION (NYTT)
             // ================================
-            var jwtKey = builder.Configuration["Jwt:Key"];
-            if (string.IsNullOrWhiteSpace(jwtKey))
-                throw new InvalidOperationException("Jwt:Key is missing in configuration.");
             builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(options =>
                 {

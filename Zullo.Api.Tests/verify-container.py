@@ -96,6 +96,17 @@ with tempfile.TemporaryDirectory(prefix='zullo-container-') as temporary:
         assert command('docker', 'exec', api, 'test', '!', '-f', '/usr/local/share/ca-certificates/build-proxy.crt', check=False).returncode == 0
         assert command('docker', 'exec', api, 'test', '!', '-f', '/app/appsettings.Development.json', check=False).returncode == 0
         assert command('docker', 'exec', api, 'test', '!', '-f', '/app/firebase-key.json', check=False).returncode == 0
+        # Real serving hosts must reject short/public development signing keys.
+        # This uses only a synthetic credential and the disposable test network.
+        for invalid_key, expected_error in [
+            ('short', 'JWT_SIGNING_KEY_REQUIRED'),
+            ('SUPER_SECRET_DEV_KEY_CHANGE_THIS_123456789', 'JWT_DEVELOPMENT_KEY_FORBIDDEN'),
+        ]:
+            rejected = command('docker', 'run', '--rm', '--network', network,
+                               '--env-file', str(env), '-e', 'Jwt__Key=' + invalid_key,
+                               '--mount', 'type=bind,source=' + str(fixture) + ',target=/tmp/synthetic-firebase.json,readonly',
+                               image, check=False)
+            assert rejected.returncode != 0 and expected_error in rejected.stdout + rejected.stderr, 'Unsafe JWT key must stop the real host'
         wrong_target = root / 'wrong-target.env'
         wrong_target.write_text(env.read_text().replace('Deployment__ExpectedDatabaseName=zullo_staging',
                                                        'Deployment__ExpectedDatabaseName=different_project_db'))

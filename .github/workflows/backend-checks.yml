@@ -33,6 +33,7 @@ jobs:
       - run: bash Zullo.Api.Tests/verify-chat-postgres.sh
       - run: bash Zullo.Api.Tests/verify-profile-migration.sh
       - run: bash Zullo.Api.Tests/verify-push-postgres.sh
+      - run: python3 Zullo.Api.Tests/verify-backup-restore.py
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 20

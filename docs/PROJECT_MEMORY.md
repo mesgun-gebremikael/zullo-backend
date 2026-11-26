@@ -24,3 +24,6 @@ Tekniska beslut/fixar/tester och parallella agenter godkända. Ingen destruktiv 
 
 ## Dagens förbättringar av mobilflyt
 Navigation behåller flikarnas innehåll och pausar dolda animationer; chattkvitton bygger inte om hemskärmen. Profil-/plånbokshämtningar samordnas och gamla kontosvar ignoreras. Swipe börjar animeras före nätverkssvar, förhindrar dubbeltryck och återställer vid fel/avbruten gest. Rewind, feed och swipe skyddas mot överlapp. Serverns feedfrågor har minskats från8 till3 och kvittohistorik hämtas i en batch med oförändrade ägar-/återbetalningsskydd. Köpknappen visar arbete direkt och kontot kontrolleras före butikens köpstart. Inga riktiga betalningar eller mejltjänster aktiverade. Se MOBILE_SMOOTHNESS_REVIEW.md (frontend) respektive MOBILE_PERFORMANCE_REVIEW.md (backend).
+
+## Fortsatt återställningsarbete 2026-11-26
+JWT-startskydd stoppar den offentliga utvecklingsnyckeln utanför Development och för korta nycklar innan servern startar. Ingen befintlig nyckel har bytts eller roterats. Se JWT_DEPLOYMENT_CONFIGURATION.md före driftsättning. En riktig pg_dump/pg_restore-kontroll med syntetiska data och helt separata PostgreSQL-resurser finns i DATABASE_RECOVERY.md. Kontrollen aktiverar inte leverantörens faktiska säkerhetskopiering och återställer aldrig riktiga kunddata. Mejl och betalningar fortsatt pausade/avstängda.
