@@ -89,6 +89,27 @@ try
     }
     await AssertOwner(a.Id, blockedToken, blockedInstall, 1);
 
+    // The installation lock itself must also coordinate a separate process,
+    // including claims that have not loaded a binding/version yet.
+    var externallyClaimedInstall = Guid.NewGuid();
+    const string externallyClaimedToken = "pg-other-replica-install-token";
+    await using (var external = Db())
+    {
+        await using var tx = await external.Database.BeginTransactionAsync();
+        var installationKey = "push-install:" + externallyClaimedInstall;
+        await external.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({installationKey}, 0))");
+        var waiting = Claim(a.Id, externallyClaimedToken, externallyClaimedInstall, 1);
+        await WaitForAdvisoryWaiter();
+        if (waiting.IsCompleted) throw new Exception("Claim bypassed another replica's installation lock.");
+        await external.Users.Where(u => u.Id == b.Id).ExecuteUpdateAsync(s => s.SetProperty(u => u.DeviceToken, externallyClaimedToken));
+        external.PushInstallations.Add(new PushInstallation { Id = externallyClaimedInstall, UserId = b.Id, Token = externallyClaimedToken,
+            TokenHash = PushInstallationService.Hash(externallyClaimedToken), Version = 2, UpdatedAtUtc = DateTime.UtcNow });
+        await external.SaveChangesAsync();
+        await tx.CommitAsync();
+        if (await waiting != PushClaimResult.Stale) throw new Exception("A lower-version claim replaced the separate replica's committed installation.");
+    }
+    await AssertOwner(b.Id, externallyClaimedToken, externallyClaimedInstall, 2);
+
     // Reproduce a separate replica changing ownership while an already-loaded
     // claimant waits for the token lock. Tracked old values must be reloaded:
     // assigning their original value again must still update the database.
