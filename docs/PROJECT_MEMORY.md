@@ -21,3 +21,6 @@ Granska frontend och backend, förbättra konkret påvisade problem från A–Ö
 
 ## Tillstånd och lanseringsgränser
 Tekniska beslut/fixar/tester och parallella agenter godkända. Ingen destruktiv databasändring, viktig dataradering, produktionspublicering eller betaltjänstaktivering utan separat godkännande. GPS, verkliga bilder/push, köp-/kvittosandbox, säker lagringsuppgradering, signering/APNs och språkgranskning måste verifieras före lansering.
+
+## Dagens förbättringar av mobilflyt
+Navigation behåller flikarnas innehåll och pausar dolda animationer; chattkvitton bygger inte om hemskärmen. Profil-/plånbokshämtningar samordnas och gamla kontosvar ignoreras. Swipe börjar animeras före nätverkssvar, förhindrar dubbeltryck och återställer vid fel/avbruten gest. Rewind, feed och swipe skyddas mot överlapp. Serverns feedfrågor har minskats från8 till3 och kvittohistorik hämtas i en batch med oförändrade ägar-/återbetalningsskydd. Köpknappen visar arbete direkt och kontot kontrolleras före butikens köpstart. Inga riktiga betalningar eller mejltjänster aktiverade. Se MOBILE_SMOOTHNESS_REVIEW.md (frontend) respektive MOBILE_PERFORMANCE_REVIEW.md (backend).
