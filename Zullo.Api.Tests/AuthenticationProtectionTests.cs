@@ -105,6 +105,39 @@ public class AuthenticationProtectionTests
         Assert.NotEqual(loggedIn.UserId, registered.UserId);
     }
 
+    [Theory]
+    [InlineData("x", 72, true)]
+    [InlineData("x", 73, false)]
+    [InlineData("å", 36, true)]
+    [InlineData("å", 37, false)]
+    [InlineData("🔐", 18, true)]
+    [InlineData("🔐", 19, false)]
+    public async Task NewPasswordsRespectBcryptByteLimitBeforeAnyEmailIsSent(string character, int count, bool accepted)
+    {
+        await using var app = await AuthApp.Start();
+        using var client = app.Client("192.0.2.1");
+        var response = await client.PostAsJsonAsync("/api/auth/register", new
+        {
+            email = "new@example.test", password = string.Concat(Enumerable.Repeat(character, count))
+        });
+        Assert.Equal(accepted ? HttpStatusCode.Accepted : HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(accepted, !string.IsNullOrEmpty(app.Email.Code));
+        Assert.DoesNotContain("token", await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExistingLongPasswordCanStillLogInWithoutChangingItsHash()
+    {
+        await using var app = await AuthApp.Start();
+        using var client = app.Client("192.0.2.1");
+        var response = await client.PostAsJsonAsync("/api/auth/login", new
+        {
+            email = "legacy-long@example.test", password = new string('x', 73)
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace((await response.Content.ReadFromJsonAsync<AuthResponseDto>())!.Token));
+    }
+
     [Fact]
     public async Task ParallelAttemptsCannotExceedAccountBudget()
     {
@@ -145,7 +178,8 @@ public class AuthenticationProtectionTests
             {
                 await db.Database.EnsureCreatedAsync();
                 db.Users.AddRange(new User { Email = "known@example.test", PasswordHash = BCrypt.Net.BCrypt.HashPassword("correct-password", 4) },
-                    new User { Email = "passwordless@example.test" });
+                    new User { Email = "passwordless@example.test" },
+                    new User { Email = "legacy-long@example.test", PasswordHash = BCrypt.Net.BCrypt.HashPassword(new string('x', 73), 4) });
                 await db.SaveChangesAsync();
             }
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

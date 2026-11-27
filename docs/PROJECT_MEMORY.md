@@ -27,3 +27,6 @@ Navigation behåller flikarnas innehåll och pausar dolda animationer; chattkvit
 
 ## Fortsatt återställningsarbete 2026-11-26
 JWT-startskydd stoppar den offentliga utvecklingsnyckeln utanför Development och för korta nycklar innan servern startar. Ingen befintlig nyckel har bytts eller roterats. Se JWT_DEPLOYMENT_CONFIGURATION.md före driftsättning. En riktig pg_dump/pg_restore-kontroll med syntetiska data och helt separata PostgreSQL-resurser finns i DATABASE_RECOVERY.md. Kontrollen aktiverar inte leverantörens faktiska säkerhetskopiering och återställer aldrig riktiga kunddata. Mejl och betalningar fortsatt pausade/avstängda.
+
+## Sju minuters granskning 2026-11-27: nya lösenord
+Nyregistrering avvisar lösenord över72 UTF-8-byte innan hashning eller mejlutskick. BCrypt använder högst72 byte; den tidigare gränsen100 tecken kunde därför acceptera olika lösenord med samma effektiva prefix. Gränsen räknar byte även för svenska tecken och emoji. Befintlig inloggning och befintliga hashformat bevaras för kompatibilitet; inga konton eller nycklar ändras. HTTP400 använder strukturerade ValidationProblemDetails med errors.Password. Sex HTTP-regressionstester täcker exakt72 respektive över72 byte för ASCII, svenska och emoji. Klienten behöver fortfarande en tydlig lokaliserad förklaring av bytegränsen; visa inte den som72 tecken. Mejl/betalningar fortsatt pausade.
