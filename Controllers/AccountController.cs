@@ -11,7 +11,7 @@ using Zullo.Api.Services;
 
 namespace Zullo.Api.Controllers;
 
-public record PauseAccount(bool Paused);
+public record PauseAccount([Required] bool? Paused);
 public record RemoveAccount([Required, StringLength(128)] string Password, bool Confirm);
 
 [ApiController, Authorize, Route("me/account"), EnableRateLimiting("commerce")]
@@ -32,7 +32,7 @@ public class AccountController(AppDbContext db, IHubContext<ChatHub> hub, ILogge
         await using var transaction = await Begin(me);
         var account = await db.Users.SingleOrDefaultAsync(u => u.Id == me && !u.IsClosed);
         if (account == null) return Unauthorized();
-        account.IsPaused = update.Paused;
+        account.IsPaused = update.Paused!.Value;
         var recipients = await db.Likes.Where(l => l.FromUserId == me).Select(l => l.ToUserId).Distinct().ToListAsync();
         await db.SaveChangesAsync();
         await transaction.CommitAsync();

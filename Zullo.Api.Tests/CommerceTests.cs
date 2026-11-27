@@ -344,6 +344,49 @@ public class CommerceTests
     }
 
     [Fact]
+    public async Task PrivacyPatchPreservesOmittedPreferencesAcrossClientsAndAccounts()
+    {
+        var store = new VerifiedStore { Active = true };
+        await using var app = await App(store);
+        using (var client = app.Client(app.A))
+            Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/commerce/privacy", new { hideActivity = true })).StatusCode);
+        using (var client = app.Client(app.A))
+        {
+            Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/commerce/privacy", new { incognito = true })).StatusCode);
+            var state = await client.GetFromJsonAsync<CommerceState>("/commerce/state");
+            Assert.True(state!.HideActivity); Assert.True(state.Incognito);
+            Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/commerce/privacy", new { })).StatusCode);
+        }
+        await using var db = app.Db();
+        var own = await db.CommerceAccounts.SingleAsync(a => a.UserId == app.A);
+        Assert.True(own.HideActivity); Assert.True(own.Incognito);
+        Assert.False(await db.CommerceAccounts.AnyAsync(a => a.UserId == app.B));
+    }
+
+    [Fact]
+    public async Task ExpiredEntitlementDoesNotPreventDisablingOnePrivacyPreference()
+    {
+        await using var app = await App();
+        await using (var db = app.Db())
+        {
+            db.CommerceAccounts.Add(new CommerceAccount { UserId = app.A, HideActivity = true, Incognito = true,
+                PremiumUntilUtc = DateTime.UtcNow.AddDays(-1) });
+            await db.SaveChangesAsync();
+        }
+        using var client = app.Client(app.A);
+        Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/commerce/privacy", new { incognito = false })).StatusCode);
+        await using (var db = app.Db())
+        {
+            var own = await db.CommerceAccounts.SingleAsync(a => a.UserId == app.A);
+            Assert.True(own.HideActivity); Assert.False(own.Incognito);
+        }
+        Assert.Equal(HttpStatusCode.PaymentRequired, (await client.PatchAsJsonAsync("/commerce/privacy", new { incognito = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/commerce/privacy", new { hideActivity = false })).StatusCode);
+        await using var check = app.Db();
+        Assert.False((await check.CommerceAccounts.SingleAsync(a => a.UserId == app.A)).HideActivity);
+    }
+
+    [Fact]
     public async Task IncognitoIsEnforcedInFeedAndRewindCannotRemoveAMatch()
     {
         var store = new VerifiedStore { Active = true };

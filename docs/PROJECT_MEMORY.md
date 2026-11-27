@@ -30,3 +30,6 @@ JWT-startskydd stoppar den offentliga utvecklingsnyckeln utanför Development oc
 
 ## Sju minuters granskning 2026-11-27: nya lösenord
 Nyregistrering avvisar lösenord över72 UTF-8-byte innan hashning eller mejlutskick. BCrypt använder högst72 byte; den tidigare gränsen100 tecken kunde därför acceptera olika lösenord med samma effektiva prefix. Gränsen räknar byte även för svenska tecken och emoji. Befintlig inloggning och befintliga hashformat bevaras för kompatibilitet; inga konton eller nycklar ändras. HTTP400 använder strukturerade ValidationProblemDetails med errors.Password. Sex HTTP-regressionstester täcker exakt72 respektive över72 byte för ASCII, svenska och emoji. Klienten behöver fortfarande en tydlig lokaliserad förklaring av bytegränsen; visa inte den som72 tecken. Mejl/betalningar fortsatt pausade.
+
+## Inställningsgranskning 27 november 2026
+Alla synliga inställningskategorier har kartlagts i docs/SETTINGS_BACKEND_AUDIT.md. Sekretess-PATCH ändrar endast uttryckligen skickade fält och tillåter avstängning efter utgånget abonnemang. Paus kräver uttrycklig bool; rapport mot saknad användare ger404. 332 Release-tester passerade, inga överhoppade. Ingen migration, SMTP-aktivering, betalningsaktivering, merge eller produktion. Telefonprov och butikssandbox återstår.

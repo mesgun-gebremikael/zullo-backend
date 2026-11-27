@@ -10,7 +10,7 @@ using Zullo.Api.Services;
 
 namespace Zullo.Api.Controllers;
 
-public record PrivacyUpdate(bool HideActivity, bool Incognito);
+public record PrivacyUpdate(bool? HideActivity = null, bool? Incognito = null);
 public record PurchaseStatusRequest(string Store, string TransactionId, string ProductId, string IdentifierKind = "store");
 
 [ApiController, Authorize, Route("commerce"), EnableRateLimiting("commerce")]
@@ -97,10 +97,12 @@ public class CommerceController(AppDbContext db, CommerceService commerce, IConf
         await commerce.State(user, cancellation: cancellation);
         await using var transaction = await commerce.Begin(user);
         var account = await commerce.Account(user);
-        if ((update.HideActivity && !CommerceService.CanHideActivity(account)) || (update.Incognito && !CommerceService.Premium(account)))
+        if ((update.HideActivity == true && !CommerceService.CanHideActivity(account)) || (update.Incognito == true && !CommerceService.Premium(account)))
             return StatusCode(402, new { message = "Dölj aktivitet kräver eget abonnemang eller Premium. Inkognito kräver Premium." });
-        account.HideActivity = update.HideActivity;
-        account.Incognito = update.Incognito;
+        // PATCH updates only the submitted preference; another device may have
+        // changed the other flag since this client last loaded its settings.
+        if (update.HideActivity is bool hideActivity) account.HideActivity = hideActivity;
+        if (update.Incognito is bool incognito) account.Incognito = incognito;
         await db.SaveChangesAsync(cancellation);
         await transaction.CommitAsync(cancellation);
         return Ok(commerce.ToState(account));
