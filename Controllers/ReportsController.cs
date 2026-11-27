@@ -53,6 +53,9 @@ public class ReportsController : ControllerBase
             });
         }
 
+        if (!await _db.Users.AnyAsync(u => u.Id == dto.ReportedUserId))
+            return NotFound();
+
         var trimmedReason = dto.Reason.Trim();
 
         var report = new Report

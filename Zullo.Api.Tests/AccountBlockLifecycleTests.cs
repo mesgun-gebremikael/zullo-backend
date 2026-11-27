@@ -17,9 +17,9 @@ public class AccountBlockLifecycleTests
         await using var db = app.Db();
         (await db.Users.SingleAsync(u => u.Id == app.A)).Email = "owner@example.test";
         db.Profiles.AddRange(
-            new Profile { UserId = app.A, DisplayName = "A", Age = 25, Gender = "Man", InterestedIn = "Kvinnor", IsVisible = true, PhotoUrls = new() { "https://example.test/1.jpg", "https://example.test/2.jpg" } },
-            new Profile { UserId = app.B, DisplayName = "B", Age = 25, Gender = "Kvinna", IsVisible = true, PhotoUrls = new() { "https://example.test/1.jpg", "https://example.test/2.jpg" } },
-            new Profile { UserId = app.C, DisplayName = "C", Age = 25, Gender = "Man", IsVisible = true, PhotoUrls = new() { "https://example.test/1.jpg", "https://example.test/2.jpg" } });
+            new Profile { UserId = app.A, DisplayName = "A", Age = 25, Gender = "Man", InterestedIn = "Kvinnor", IsVisible = true, Lat = 59.3293, Lng = 18.0686, PhotoUrls = new() { "https://example.test/1.jpg", "https://example.test/2.jpg" } },
+            new Profile { UserId = app.B, DisplayName = "B", Age = 25, Gender = "Kvinna", IsVisible = true, Lat = 59.3293, Lng = 18.0686, PhotoUrls = new() { "https://example.test/1.jpg", "https://example.test/2.jpg" } },
+            new Profile { UserId = app.C, DisplayName = "C", Age = 25, Gender = "Man", IsVisible = true, Lat = 59.3293, Lng = 18.0686, PhotoUrls = new() { "https://example.test/1.jpg", "https://example.test/2.jpg" } });
         await db.SaveChangesAsync();
     }
 

@@ -3,7 +3,8 @@ using Zullo.Api.Data;
 
 namespace Zullo.Api.Services;
 
-// Webhooks are primary; periodic reconciliation handles missed subscription events.
+// Webhooks are primary. Include recently expired subscriptions so a missed renewal
+// webhook does not prevent periodic recovery; no rights are granted beyond verified expiry.
 public class CommerceReconciliation(IServiceScopeFactory scopes, IConfiguration config, ILogger<CommerceReconciliation> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -18,7 +19,7 @@ public class CommerceReconciliation(IServiceScopeFactory scopes, IConfiguration 
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var cutoff = DateTime.UtcNow.AddMinutes(-2);
             var users = await db.CommerceAccounts.AsNoTracking()
-                .Where(a => (a.PremiumUntilUtc > DateTime.UtcNow || a.ActivityPrivacyUntilUtc > DateTime.UtcNow) && a.LastVerifiedUtc < cutoff)
+                .Where(a => (a.PremiumUntilUtc > DateTime.UtcNow.AddDays(-7) || a.ActivityPrivacyUntilUtc > DateTime.UtcNow.AddDays(-7)) && (a.LastVerifiedUtc == null || a.LastVerifiedUtc < cutoff))
                 .OrderBy(a => a.LastVerifiedUtc).Select(a => a.UserId).Take(100).ToListAsync(stoppingToken);
             foreach (var user in users)
             {

@@ -25,6 +25,8 @@ public class PurchaseGrant
     public string TransactionKey { get; set; } = "";
     public Guid UserId { get; set; }
     public string ProductId { get; set; } = "";
+    // RevenueCat purchase identity, learned only from the authenticated provider snapshot.
+    public string? ProviderTransactionId { get; set; }
     public int SuperLikes { get; set; }
     public int Boosts { get; set; }
     public bool Refunded { get; set; }

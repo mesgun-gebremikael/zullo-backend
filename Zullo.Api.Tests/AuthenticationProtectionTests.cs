@@ -79,7 +79,7 @@ public class AuthenticationProtectionTests
     }
 
     [Fact]
-    public async Task ValidLoginAndRegistrationStillReturnTokens()
+    public async Task LegacyLoginReturnsTokenButNewRegistrationRequiresEmailProof()
     {
         await using var app = await AuthApp.Start();
         using var client = app.Client("192.0.2.1");
@@ -95,10 +95,47 @@ public class AuthenticationProtectionTests
         {
             email = "new@example.test", password = "new-password-123"
         });
-        Assert.Equal(HttpStatusCode.OK, registration.StatusCode);
-        var registered = (await registration.Content.ReadFromJsonAsync<AuthResponseDto>())!;
+        Assert.Equal(HttpStatusCode.Accepted, registration.StatusCode);
+        Assert.DoesNotContain("token", await registration.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+        var pending = (await registration.Content.ReadFromJsonAsync<EmailChallenge>())!;
+        var verified = await client.PostAsJsonAsync("/api/auth/verify-email", new { pending.ChallengeId, code = app.Email.Code });
+        Assert.Equal(HttpStatusCode.OK, verified.StatusCode);
+        var registered = (await verified.Content.ReadFromJsonAsync<AuthResponseDto>())!;
         Assert.False(string.IsNullOrWhiteSpace(registered.Token));
         Assert.NotEqual(loggedIn.UserId, registered.UserId);
+    }
+
+    [Theory]
+    [InlineData("x", 72, true)]
+    [InlineData("x", 73, false)]
+    [InlineData("å", 36, true)]
+    [InlineData("å", 37, false)]
+    [InlineData("🔐", 18, true)]
+    [InlineData("🔐", 19, false)]
+    public async Task NewPasswordsRespectBcryptByteLimitBeforeAnyEmailIsSent(string character, int count, bool accepted)
+    {
+        await using var app = await AuthApp.Start();
+        using var client = app.Client("192.0.2.1");
+        var response = await client.PostAsJsonAsync("/api/auth/register", new
+        {
+            email = "new@example.test", password = string.Concat(Enumerable.Repeat(character, count))
+        });
+        Assert.Equal(accepted ? HttpStatusCode.Accepted : HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(accepted, !string.IsNullOrEmpty(app.Email.Code));
+        Assert.DoesNotContain("token", await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExistingLongPasswordCanStillLogInWithoutChangingItsHash()
+    {
+        await using var app = await AuthApp.Start();
+        using var client = app.Client("192.0.2.1");
+        var response = await client.PostAsJsonAsync("/api/auth/login", new
+        {
+            email = "legacy-long@example.test", password = new string('x', 73)
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace((await response.Content.ReadFromJsonAsync<AuthResponseDto>())!.Token));
     }
 
     [Fact]
@@ -131,6 +168,7 @@ public class AuthenticationProtectionTests
     {
         private readonly SqliteConnection _connection = new("Data Source=:memory:");
         private IHost _host = null!;
+        public TestVerificationEmailSender Email { get; } = new();
 
         public static async Task<AuthApp> Start()
         {
@@ -140,7 +178,8 @@ public class AuthenticationProtectionTests
             {
                 await db.Database.EnsureCreatedAsync();
                 db.Users.AddRange(new User { Email = "known@example.test", PasswordHash = BCrypt.Net.BCrypt.HashPassword("correct-password", 4) },
-                    new User { Email = "passwordless@example.test" });
+                    new User { Email = "passwordless@example.test" },
+                    new User { Email = "legacy-long@example.test", PasswordHash = BCrypt.Net.BCrypt.HashPassword(new string('x', 73), 4) });
                 await db.SaveChangesAsync();
             }
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -153,6 +192,8 @@ public class AuthenticationProtectionTests
                 services.AddControllers().AddApplicationPart(typeof(AuthController).Assembly);
                 services.AddDbContext<AppDbContext>(o => o.UseSqlite(app._connection));
                 services.AddAuthenticationProtection();
+                services.AddSingleton<IVerificationEmailSender>(app.Email);
+                services.AddScoped<PendingEmailRegistrationService>();
             }).Configure(builder =>
             {
                 // Only this test host accepts an address override, not application code.

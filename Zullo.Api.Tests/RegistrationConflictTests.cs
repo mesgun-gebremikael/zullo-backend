@@ -22,10 +22,13 @@ public class RegistrationConflictTests
             "IX_User_Email");
         await db.Database.EnsureCreatedAsync();
         using var limiter = new LoginAttemptService();
-        var controller = new AuthController(db, new ConfigurationBuilder().Build(), limiter);
-        var result = Assert.IsType<BadRequestObjectResult>(await controller.Register(new RegisterRequestDto
-        { Email = "race@example.test", Password = "password123" }));
-        Assert.Equal("User already exists.", Assert.IsType<ErrorMessageResponseDto>(result.Value).Message);
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Jwt:Key"] = new string('k', 64) }).Build();
+        var sender = new TestVerificationEmailSender();
+        var verifier = new PendingEmailRegistrationService(db, config, sender);
+        var controller = new AuthController(db, config, limiter, verifier);
+        var pending = await verifier.Begin("race@example.test", "password123");
+        var result = Assert.IsType<ConflictObjectResult>(await controller.VerifyEmail(new VerifyEmailRequest { ChallengeId = pending.ChallengeId, Code = sender.Code }));
+        Assert.Equal("email_in_use", result.Value!.GetType().GetProperty("code")!.GetValue(result.Value));
         Assert.True(db.SaveAttempted);
         Assert.Empty(await db.Users.ToListAsync());
     }
@@ -39,9 +42,12 @@ public class RegistrationConflictTests
             "SomeOtherConstraint");
         await db.Database.EnsureCreatedAsync();
         using var limiter = new LoginAttemptService();
-        var controller = new AuthController(db, new ConfigurationBuilder().Build(), limiter);
-        await Assert.ThrowsAsync<DbUpdateException>(() => controller.Register(new RegisterRequestDto
-        { Email = "other@example.test", Password = "password123" }));
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Jwt:Key"] = new string('k', 64) }).Build();
+        var sender = new TestVerificationEmailSender();
+        var verifier = new PendingEmailRegistrationService(db, config, sender);
+        var controller = new AuthController(db, config, limiter, verifier);
+        var pending = await verifier.Begin("other@example.test", "password123");
+        await Assert.ThrowsAsync<DbUpdateException>(() => controller.VerifyEmail(new VerifyEmailRequest { ChallengeId = pending.ChallengeId, Code = sender.Code }));
     }
 
     // Emulates PostgreSQL rejecting a second request after its existence check.
@@ -50,6 +56,7 @@ public class RegistrationConflictTests
         public bool SaveAttempted { get; private set; }
         public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
+            if (!ChangeTracker.Entries<Zullo.Api.Models.User>().Any(e => e.State == EntityState.Added)) return base.SaveChangesAsync(cancellationToken);
             SaveAttempted = true;
             throw new DbUpdateException("Insert conflict", new PostgresException(
                 "duplicate key", "ERROR", "ERROR", PostgresErrorCodes.UniqueViolation,

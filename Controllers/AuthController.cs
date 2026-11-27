@@ -14,6 +14,15 @@ using Zullo.Api.Services;
 
 namespace Zullo.Api.Controllers
 {
+    public sealed class VerifyEmailRequest
+    {
+        public Guid ChallengeId { get; set; }
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.RegularExpression("^[0-9]{6}$")]
+        public string Code { get; set; } = "";
+    }
+    public sealed class ResendEmailRequest { public Guid ChallengeId { get; set; } }
+
     [ApiController]
     [Route("api/auth")]
     [EnableRateLimiting(AuthenticationProtection.Policy)]
@@ -23,74 +32,57 @@ namespace Zullo.Api.Controllers
         private readonly AppDbContext _db;
         private readonly IConfiguration _config;
         private readonly LoginAttemptService _loginAttemptService;
+        private readonly PendingEmailRegistrationService _verification;
 
-        public AuthController(AppDbContext db, IConfiguration config, LoginAttemptService loginAttemptService)
+        public AuthController(AppDbContext db, IConfiguration config, LoginAttemptService loginAttemptService, PendingEmailRegistrationService? verification = null)
         {
             _db = db;
             _config = config;
             _loginAttemptService = loginAttemptService;
+            _verification = verification ?? new PendingEmailRegistrationService(db, config, new SmtpVerificationEmailSender(config));
         }
 
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequestDto request)
         {
-            // Normalisera email för konsekvent register/login och unikhetkontroll
-            var normalizedEmail = request.Email.Trim().ToLowerInvariant();
-            var password = request.Password;
-
-            // Kolla om user redan finns
-            var exists = await _db.Users.AnyAsync(x => x.Email == normalizedEmail);
-
-            //Skydda mot dubbla konton med samma email
-            if (exists)
-            {
-                return BadRequest(new ErrorMessageResponseDto
-                {
-                    Message = "User already exists."
-                });
-            }
-
-            // HASHA lösenordet innan det sparas i database
-            var hash = BCrypt.Net.BCrypt.HashPassword(password);
-
-            var user = new User
-            {
-                Email = normalizedEmail,
-                IsVerified = true,
-                PasswordHash = hash,
-
-                // Rimliga defaults för ny användare
-                CreatedAtUtc = DateTime.UtcNow,
-                LikesRemaining = 50,
-                LikesResetAtUtc = DateTime.UtcNow.AddHours(12),
-                MatchRadiusKm = 50
-            };
-
-            _db.Users.Add(user);
+            if (!EmailAddressPolicy.TryNormalize(request.Email, out var email))
+                return BadRequest(new { code = "invalid_email", message = "Invalid email address." });
+            var suggestion = EmailAddressPolicy.SuggestAddress(email);
+            if (suggestion is not null) return BadRequest(new { code = "email_domain_typo", suggestion, message = "Check the email domain." });
             try
             {
-                await _db.SaveChangesAsync();
+                return StatusCode(StatusCodes.Status202Accepted,
+                    await _verification.Begin(email, request.Password, HttpContext?.RequestAborted ?? default));
             }
-            catch (DbUpdateException exception) when (
-                exception.InnerException is PostgresException
+            catch (EmailVerificationFailure failure) { return VerificationError(failure); }
+        }
+
+        [HttpPost("verify-email")]
+        public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
+        {
+            try
+            {
+                var user = await _verification.Verify(request.ChallengeId, request.Code, HttpContext?.RequestAborted ?? default);
+                return Ok(new AuthResponseDto { Token = GenerateJwt(user), UserId = user.Id, Email = user.Email });
+            }
+            catch (EmailVerificationFailure failure) { return VerificationError(failure); }
+            catch (DbUpdateException exception) when (exception.InnerException is PostgresException
                 { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_User_Email" })
-            {
-                // Another request may insert the address after AnyAsync checked it.
-                // Never return a token for that existing account.
-                return BadRequest(new ErrorMessageResponseDto { Message = "User already exists." });
-            }
+            { return Conflict(new { code = "email_in_use", message = "User already exists." }); }
+        }
 
-            // Skapa token först efter att user finns och är sparad
-            var token = GenerateJwt(user);
+        [HttpPost("resend-verification")]
+        public async Task<IActionResult> ResendVerification([FromBody] ResendEmailRequest request)
+        {
+            try { return StatusCode(StatusCodes.Status202Accepted, await _verification.Resend(request.ChallengeId, HttpContext?.RequestAborted ?? default)); }
+            catch (EmailVerificationFailure failure) { return VerificationError(failure); }
+        }
 
-            // Register returnerar token direkt så frontend kan logga in utan extra steg
-            return Ok(new AuthResponseDto
-            {
-                Message = "User created",
-                Token = token,
-                UserId = user.Id,
-                Email = user.Email
-            });
+        private IActionResult VerificationError(EmailVerificationFailure failure)
+        {
+            if (failure.RetryAfter is int seconds && HttpContext is not null) Response.Headers.RetryAfter = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return StatusCode(failure.Status, new { code = failure.Code,
+                message = failure.Code == "email_in_use" ? "User already exists." : "Email verification could not be completed." });
         }
 
         [HttpPost("login")]
@@ -99,7 +91,8 @@ namespace Zullo.Api.Controllers
           
 
             // Samma normalisering och email som vid register
-            var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+            if (!EmailAddressPolicy.TryNormalize(request.Email, out var normalizedEmail))
+                return BadRequest(new { code = "invalid_email", message = "Invalid email address." });
 
             var password = request.Password;
 
@@ -116,6 +109,11 @@ namespace Zullo.Api.Controllers
             // Perform password work for unknown/passwordless accounts as well.
             var hash = string.IsNullOrWhiteSpace(user?.PasswordHash) ? DummyPasswordHash : user.PasswordHash;
             var validPassword = BCrypt.Net.BCrypt.Verify(password, hash);
+            if (user is null)
+            {
+                var pending = await _verification.Resume(normalizedEmail, password, HttpContext?.RequestAborted ?? default);
+                if (pending is not null) return StatusCode(StatusCodes.Status202Accepted, pending);
+            }
             if (user == null || user.IsClosed || string.IsNullOrWhiteSpace(user.PasswordHash) || !validPassword)
             {
                 return Unauthorized(new ErrorMessageResponseDto

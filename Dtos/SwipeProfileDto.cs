@@ -13,6 +13,7 @@ public class SwipeProfileDto
     public string DisplayName { get; set; } = "";
     public int Age { get; set; }
     public string Bio { get; set; } = "";
+    public List<ProfilePrompt> ConversationPrompts { get; set; } = new();
     public string PromptKey { get; set; } = "";
     public string PromptAnswer { get; set; } = "";
 

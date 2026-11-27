@@ -23,6 +23,7 @@ public class Matchningstester
         var a = new User();
         var b = new User();
         db.Users.AddRange(a, b);
+        db.Profiles.AddRange(new Profile { UserId = a.Id, DisplayName = "A", Age = 25 }, new Profile { UserId = b.Id, DisplayName = "B", Age = 25 });
         await db.SaveChangesAsync();
 
         var svar = await SkapaController(db, a.Id).Like(new SwipeTargetDto { TargetUserId = b.Id });
@@ -42,6 +43,7 @@ public class Matchningstester
         var a = new User();
         var b = new User();
         db.Users.AddRange(a, b);
+        db.Profiles.AddRange(new Profile { UserId = a.Id, DisplayName = "A", Age = 25 }, new Profile { UserId = b.Id, DisplayName = "B", Age = 25 });
         await db.SaveChangesAsync();
 
         var forsta = await SkapaController(db, a.Id).Like(new SwipeTargetDto { TargetUserId = b.Id });

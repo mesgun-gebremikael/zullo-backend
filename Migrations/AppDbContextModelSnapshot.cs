@@ -199,6 +199,46 @@ namespace Zullo.Api.Migrations
                     b.ToTable("Matches");
                 });
 
+            modelBuilder.Entity("Zullo.Api.Models.MatchNotification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OtherUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MatchId", "RecipientUserId")
+                        .IsUnique();
+
+                    b.HasIndex("SentAtUtc", "CancelledAtUtc", "NextAttemptAtUtc");
+
+                    b.ToTable("MatchNotifications");
+                });
+
             modelBuilder.Entity("Zullo.Api.Models.Message", b =>
                 {
                     b.Property<Guid>("Id")
@@ -372,6 +412,67 @@ namespace Zullo.Api.Migrations
                     b.ToTable("OwnedPhotos");
                 });
 
+            modelBuilder.Entity("Zullo.Api.Models.PendingEmailRegistration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ChallengeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("ConsumedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeliveryConfirmedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("NextSendAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("SendCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("SendWindowStartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChallengeId")
+                        .IsUnique();
+
+                    b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.ToTable("PendingEmailRegistrations");
+                });
+
             modelBuilder.Entity("Zullo.Api.Models.Profile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -400,6 +501,12 @@ namespace Zullo.Api.Migrations
                     b.Property<string>("ChildrenCount")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("ConversationPrompts")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValueSql("'[]'");
 
                     b.Property<string>("CountryCode")
                         .IsRequired()
@@ -546,6 +653,10 @@ namespace Zullo.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("ProviderTransactionId")
+                        .HasMaxLength(180)
+                        .HasColumnType("character varying(180)");
+
                     b.Property<bool>("Refunded")
                         .HasColumnType("boolean");
 
@@ -557,9 +668,43 @@ namespace Zullo.Api.Migrations
 
                     b.HasKey("TransactionKey");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "ProductId", "ProviderTransactionId");
 
                     b.ToTable("PurchaseGrants");
+                });
+
+            modelBuilder.Entity("Zullo.Api.Models.PushInstallation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Token")
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)");
+
+                    b.Property<string>("TokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasFilter("\"TokenHash\" IS NOT NULL");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PushInstallations");
                 });
 
             modelBuilder.Entity("Zullo.Api.Models.Report", b =>
@@ -647,6 +792,9 @@ namespace Zullo.Api.Migrations
                     b.Property<string>("Email")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("EmailVerifiedAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("ExpandAge")
                         .HasColumnType("boolean");
@@ -752,6 +900,15 @@ namespace Zullo.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Zullo.Api.Models.MatchNotification", b =>
+                {
+                    b.HasOne("Zullo.Api.Models.Match", null)
+                        .WithMany()
+                        .HasForeignKey("MatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Zullo.Api.Models.Message", b =>
                 {
                     b.HasOne("Zullo.Api.Models.User", null)
@@ -794,6 +951,14 @@ namespace Zullo.Api.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Zullo.Api.Models.PushInstallation", b =>
+                {
+                    b.HasOne("Zullo.Api.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Zullo.Api.Models.Report", b =>

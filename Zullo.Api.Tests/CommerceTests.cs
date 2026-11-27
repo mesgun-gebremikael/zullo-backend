@@ -33,7 +33,7 @@ public class CommerceTests
     {
         await using var db = app.Db();
         foreach (var (id, name) in new[] { (app.A, "A"), (app.B, "B"), (app.C, "C") })
-            db.Profiles.Add(new Profile { UserId = id, DisplayName = name, Gender = "Man", Age = 25, IsVisible = true,
+            db.Profiles.Add(new Profile { UserId = id, DisplayName = name, Gender = "Man", Age = 25, IsVisible = true, Lat = 59.3293, Lng = 18.0686,
                 PhotoUrls = new() { "https://example.test/1", "https://example.test/2" } });
         await db.SaveChangesAsync();
     }
@@ -93,6 +93,43 @@ public class CommerceTests
         var other = await (await b.PostAsync("/commerce/sync", null)).Content.ReadFromJsonAsync<CommerceState>();
         Assert.Equal(0, other!.SuperLikes);
         await using var db = app.Db(); Assert.Equal(2, await db.PurchaseGrants.CountAsync());
+    }
+
+    [Fact]
+    public async Task MixedReceiptHistoryPreservesOwnersSpentBalancesAndSingleRefunds()
+    {
+        var store = new VerifiedStore { Credits = new()
+        {
+            new("app_store:spent", "zullo_superlikes_5", 5, 0, "rc-spent"),
+            new("app_store:foreign", "zullo_boost_1", 0, 1),
+            new("app_store:refund", "zullo_superlikes_5", 5, 0, Refunded: true),
+            new("app_store:new", "zullo_superlikes_5", 5, 0),
+            new("app_store:new", "zullo_superlikes_5", 5, 0)
+        } };
+        await using var app = await App(store);
+        await using (var db = app.Db())
+        {
+            db.CommerceAccounts.Add(new CommerceAccount { UserId = app.A, PurchasedSuperLikes = 5 });
+            db.PurchaseGrants.AddRange(
+                new PurchaseGrant { UserId = app.A, TransactionKey = "app_store:spent", ProductId = "zullo_superlikes_5", SuperLikes = 5 },
+                new PurchaseGrant { UserId = app.B, TransactionKey = "app_store:foreign", ProductId = "zullo_boost_1", Boosts = 1 },
+                new PurchaseGrant { UserId = app.A, TransactionKey = "app_store:refund", ProductId = "zullo_superlikes_5", SuperLikes = 5 });
+            await db.SaveChangesAsync();
+        }
+        using var client = app.Client(app.A);
+        for (var i = 0; i < 2; i++)
+        {
+            var response = await client.PostAsync("/commerce/sync", null);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var state = await response.Content.ReadFromJsonAsync<CommerceState>();
+            Assert.Equal(5, state!.SuperLikes);
+            Assert.Equal(0, state.Boosts);
+        }
+        await using var check = app.Db();
+        Assert.Equal(4, await check.PurchaseGrants.CountAsync());
+        Assert.Equal(app.B, (await check.PurchaseGrants.FindAsync("app_store:foreign"))!.UserId);
+        Assert.Equal("rc-spent", (await check.PurchaseGrants.FindAsync("app_store:spent"))!.ProviderTransactionId);
+        Assert.True((await check.PurchaseGrants.FindAsync("app_store:refund"))!.Refunded);
     }
 
     [Fact]
@@ -304,6 +341,49 @@ public class CommerceTests
         Assert.True(presence.GetProperty("online").GetBoolean());
         Assert.NotNull(Assert.Single((await b.GetFromJsonAsync<List<MatchListItemDto>>("/matches"))!).LastActivityUtc);
         Assert.Equal(HttpStatusCode.PaymentRequired, (await a.PatchAsJsonAsync("/commerce/privacy", new { hideActivity = true })).StatusCode);
+    }
+
+    [Fact]
+    public async Task PrivacyPatchPreservesOmittedPreferencesAcrossClientsAndAccounts()
+    {
+        var store = new VerifiedStore { Active = true };
+        await using var app = await App(store);
+        using (var client = app.Client(app.A))
+            Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/commerce/privacy", new { hideActivity = true })).StatusCode);
+        using (var client = app.Client(app.A))
+        {
+            Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/commerce/privacy", new { incognito = true })).StatusCode);
+            var state = await client.GetFromJsonAsync<CommerceState>("/commerce/state");
+            Assert.True(state!.HideActivity); Assert.True(state.Incognito);
+            Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/commerce/privacy", new { })).StatusCode);
+        }
+        await using var db = app.Db();
+        var own = await db.CommerceAccounts.SingleAsync(a => a.UserId == app.A);
+        Assert.True(own.HideActivity); Assert.True(own.Incognito);
+        Assert.False(await db.CommerceAccounts.AnyAsync(a => a.UserId == app.B));
+    }
+
+    [Fact]
+    public async Task ExpiredEntitlementDoesNotPreventDisablingOnePrivacyPreference()
+    {
+        await using var app = await App();
+        await using (var db = app.Db())
+        {
+            db.CommerceAccounts.Add(new CommerceAccount { UserId = app.A, HideActivity = true, Incognito = true,
+                PremiumUntilUtc = DateTime.UtcNow.AddDays(-1) });
+            await db.SaveChangesAsync();
+        }
+        using var client = app.Client(app.A);
+        Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/commerce/privacy", new { incognito = false })).StatusCode);
+        await using (var db = app.Db())
+        {
+            var own = await db.CommerceAccounts.SingleAsync(a => a.UserId == app.A);
+            Assert.True(own.HideActivity); Assert.False(own.Incognito);
+        }
+        Assert.Equal(HttpStatusCode.PaymentRequired, (await client.PatchAsJsonAsync("/commerce/privacy", new { incognito = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync("/commerce/privacy", new { hideActivity = false })).StatusCode);
+        await using var check = app.Db();
+        Assert.False((await check.CommerceAccounts.SingleAsync(a => a.UserId == app.A)).HideActivity);
     }
 
     [Fact]

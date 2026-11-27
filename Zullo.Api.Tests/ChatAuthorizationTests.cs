@@ -1,4 +1,4 @@
-﻿using System.IdentityModel.Tokens.Jwt;
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -98,6 +98,7 @@ public class ChatAuthorizationTests
     public async Task BlockedUsersCannotCreateReciprocalMatch(bool reverse)
     {
         await using var app = await TestApp.Start();
+        await app.AddSwipeProfiles(app.A, app.B);
         await using (var db = app.Db())
         {
             db.Likes.Add(new Like { FromUserId = app.B, ToUserId = app.A });
@@ -158,6 +159,7 @@ public class ChatAuthorizationTests
     public async Task MutualLikesStillAllowSendingReadingAndMarkingRead()
     {
         await using var app = await TestApp.Start();
+        await app.AddSwipeProfiles(app.A, app.B);
         using var a = app.Client(app.A);
         using var b = app.Client(app.B);
         var first = await a.PostAsJsonAsync("/swipe/like", new { targetUserId = app.B });
@@ -223,6 +225,15 @@ public class ChatAuthorizationTests
         public Guid B { get; } = Guid.NewGuid();
         public Guid C { get; } = Guid.NewGuid();
         public AppDbContext Db() => new(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connection).Options);
+
+        public async Task AddSwipeProfiles(params Guid[] users)
+        {
+            await using var db = Db();
+            foreach (var user in users)
+                if (!await db.Profiles.AnyAsync(p => p.UserId == user))
+                    db.Profiles.Add(new Profile { UserId = user, DisplayName = "Swipe fixture", Age = 25, Gender = "Kvinna", IsVisible = true, Lat = 59.33, Lng = 18.06 });
+            await db.SaveChangesAsync();
+        }
 
         public static async Task<TestApp> Start(string environment = "Production", Action<IServiceCollection>? configure = null)
         {
